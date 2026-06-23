@@ -16,6 +16,7 @@
 - [Configuration](#configuration)
 - [Architecture](#architecture)
 - [Examples](#examples)
+- [Per-pattern cache commands](#per-pattern-cache-commands)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 - [Development](#development)
@@ -247,7 +248,17 @@ The `watcher.config.json` file is auto-created in your project root.
   "drushCmd": null,
   "drushCommand": "cr",
   "drushArgs": [],
-  "postClearCommands": []
+  "postClearCommands": [],
+  "commandsPerPattern": {
+    ".html.twig": "cc twig",
+    ".theme": "cc theme-registry",
+    ".module": "cc plugin",
+    ".inc": "cc plugin",
+    ".yml": "cc plugin",
+    ".php": "cc plugin",
+    ".info.yml": "cr",
+    ".services.yml": "cr"
+  }
 }
 ```
 
@@ -263,6 +274,7 @@ The `watcher.config.json` file is auto-created in your project root.
 | `drushCommand` | Drush subcommand to run | `"cr"` |
 | `drushArgs` | Extra arguments for Drush | `[]` |
 | `postClearCommands` | Shell commands to run after each cache clear | `[]` |
+| `commandsPerPattern` | Map file patterns to specific cache clear commands | see below |
 
 ### Notes
 
@@ -272,6 +284,45 @@ The `watcher.config.json` file is auto-created in your project root.
 - **Custom Drush**: Set `drushCmd` to a specific binary path if needed. In DDEV, run `ddev drupal-watcher` instead.
 - **drushCommand**: Use `"cc bin"` for faster partial cache clears instead of full `"cr"`.
 - **postClearCommands**: Array of shell commands run after each cache clear (e.g. `["drush cex"]`).
+- **commandsPerPattern**: Map file patterns to specific cache clear commands. See [Per-pattern cache commands](#per-pattern-cache-commands).
+
+### Per-pattern cache commands
+
+Instead of running `drush cr` for every change, you can map file patterns to specific, lighter cache clears:
+
+| Pattern | Command | Effect |
+| :--- | :--- | :--- |
+| `.html.twig` | `cc twig` | Clears Twig template cache |
+| `.theme` | `cc theme-registry` | Clears theme registry |
+| `.module` | `cc plugin` | Clears plugin/hook discovery cache |
+| `.inc` | `cc plugin` | Clears plugin/hook discovery cache |
+| `.yml` | `cc plugin` | Clears plugin/hook discovery cache |
+| `.php` | `cc plugin` | Clears plugin/hook discovery cache |
+| `.info.yml` | `cr` | Full rebuild (module info changes) |
+| `.services.yml` | `cr` | Full rebuild (container changes) |
+
+When multiple changed files match different patterns with different commands, the watcher falls back to `drush cr` to ensure everything is refreshed.
+
+Only `.info.yml` and `.services.yml` trigger a full `cr`. Everything else uses `cc plugin` (clears `cache.discovery` — plugin definitions, hooks, services) or specific clears like `cc twig`. This is **significantly faster** than a full rebuild on every change.
+
+Override or extend via `--commands-per-pattern`:
+
+```bash
+vendor/bin/drupal-watcher start --commands-per-pattern=.module=cr
+```
+
+Or in `watcher.config.json`:
+
+```json
+{
+  "commandsPerPattern": {
+    ".html.twig": "cc twig",
+    ".module": "cr"
+  }
+}
+```
+
+> **Note**: User-supplied values are **merged** with defaults — you only need to specify the patterns you want to override.
 
 ## Architecture
 
@@ -323,17 +374,26 @@ vendor/bin/drupal-watcher add docroot/modules/contrib
 vendor/bin/drupal-watcher list
 ```
 
-### Example 3: Faster cache clear
+### Example 3: Custom cache clear per file type
 
-Edit `watcher.config.json`:
+Use `cc twig` for `.html.twig` and `cr` for everything else:
+
+```bash
+vendor/bin/drupal-watcher start --commands-per-pattern=.html.twig="cc twig" --commands-per-pattern=.module=cr
+```
+
+Or in `watcher.config.json`:
 
 ```json
 {
-  "drushCommand": "cc bin"
+  "commandsPerPattern": {
+    ".html.twig": "cc twig",
+    ".module": "cr"
+  }
 }
 ```
 
-Runs `drush cc bin` instead of the full `drush cr`.
+The watcher runs the matching command per changed file. If multiple files match different commands, it falls back to `drush cr`.
 
 ### Example 4: Post-clear commands
 
@@ -518,6 +578,7 @@ The repository includes a GitHub Action (`.github/workflows/tag.yml`) that autom
 | `--no-colors` | all | Disable ANSI colors |
 | `--version`, `-V` | all | Show version number |
 | `--help`, `-h` | all | Show help |
+| `--commands-per-pattern=<p>=<c>` | `start` | Map pattern to drush command (repeatable) |
 
 ## Contributing
 
