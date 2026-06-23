@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 
 import { existsSync, accessSync, constants } from "fs";
-import { $ } from "bun";
 import path from "path";
 
 const RED = "\x1b[31m";
@@ -152,18 +151,19 @@ async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
   console.log(`${YELLOW}🔄 Limpiando caché...${suffix}${NC}`);
 
   try {
-    const { exitCode, stderr } = await $`${drushBase} ${drushArgsArray}`.quiet().nothrow();
+    const proc = Bun.spawn([drushBase, ...drushArgsArray], { stdout: "pipe", stderr: "pipe" });
+    const exitCode = await proc.exited;
+    const stderrText = await new Response(proc.stderr).text();
 
     if (exitCode === 0) {
       console.log(`${GREEN}✅ Caché limpiada correctamente.${NC}`);
     } else {
-      const errText = await new Response(stderr).text();
-      console.error(`${RED}❌ Error drush (exit ${exitCode}):${NC} ${errText || "drush no disponible"}`);
+      console.error(`${RED}❌ Error drush (exit ${exitCode}):${NC} ${stderrText || "drush no disponible"}`);
     }
 
     for (const cmd of postClearCommands) {
       console.log(`${YELLOW}⚡ ${cmd}${NC}`);
-      await $`${cmd}`.nothrow();
+      await Bun.spawn(["sh", "-c", cmd], { stdio: ["inherit", "inherit", "inherit"] }).exited;
     }
   } catch (error) {
     console.error(`${RED}❌ Error:${NC} ${error.message}`);
@@ -284,10 +284,11 @@ async function cmdStart() {
   console.log(`${GREEN}🌐 Entorno:${NC} ${detectEnvironment()}`);
   console.log(`${GREEN}🔧 Drush:${NC} ${drushCmdStr} ${config.drushCommand}`);
 
-  // Health check via Bun shell
-  const healthCmd = [...drushCmdStr.split(/\s+/), "status", "--format=json"].join(" ");
-  const healthResult = await $`${healthCmd}`.quiet().nothrow();
-  if (healthResult.exitCode !== 0) {
+  // Health check via Bun.spawn
+  const healthParts = [...drushCmdStr.split(/\s+/), "status", "--format=json"];
+  const healthProc = Bun.spawn(healthParts, { stdout: "pipe", stderr: "pipe" });
+  const healthExitCode = await healthProc.exited;
+  if (healthExitCode !== 0) {
     console.log(`${YELLOW}⚠️ Drush no responde. El watcher iniciará igualmente.${NC}`);
   }
 
