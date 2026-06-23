@@ -1,9 +1,8 @@
 import path from "path";
 import { RED, GREEN, YELLOW, BLUE, NC, EXCLUDED_DIRS } from "./utils.js";
-import { getDrushSpawnArgs } from "./drush.js";
-import { runDrush, runPostClearCommands } from "./drush.js";
+import { getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
 
-// --- Stats ---
+// --- Runtime stats ---
 export const stats = {
   changes: 0,
   clears: 0,
@@ -11,7 +10,7 @@ export const stats = {
   filesChanged: new Set(),
 };
 
-// --- Adaptive debounce ---
+// --- Debounce state ---
 let debounceTimer = null;
 let changeAccumulator = new Map();
 
@@ -28,16 +27,16 @@ async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
   changeAccumulator.clear();
   if (files.length === 0) return;
 
-  const suffix = files.length > 1 ? ` (${files.length} archivos)` : "";
-  console.log(`${YELLOW}🔄 Limpiando caché...${suffix}${NC}`);
+  const suffix = files.length > 1 ? ` (${files.length} files)` : "";
+  console.log(`${YELLOW}🔄 Clearing cache...${suffix}${NC}`);
 
   const { exitCode, stderr } = await runDrush(drushBase, drushArgsArray);
 
   if (exitCode === 0) {
-    console.log(`${GREEN}✅ Caché limpiada correctamente.${NC}`);
+    console.log(`${GREEN}✔ Cache cleared.${NC}`);
     stats.clears++;
   } else {
-    console.error(`${RED}❌ Error drush (exit ${exitCode}):${NC} ${stderr || "drush no disponible"}`);
+    console.error(`${RED}✖ Drush error (exit ${exitCode}):${NC} ${stderr || "drush unavailable"}`);
   }
 
   await runPostClearCommands(postClearCommands);
@@ -57,14 +56,15 @@ export function printStats() {
   const elapsed = Math.round((Date.now() - stats.startTime) / 1000);
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
-  console.log(`\n${BLUE}📊 Estadísticas del watcher:${NC}`);
-  console.log(`  ${YELLOW}Tiempo activo:${NC} ${mins}m ${secs}s`);
-  console.log(`  ${YELLOW}Cambios detectados:${NC} ${stats.changes}`);
-  console.log(`  ${YELLOW}Archivos únicos:${NC} ${stats.filesChanged.size}`);
-  console.log(`  ${YELLOW}Limpiezas de caché:${NC} ${stats.clears}`);
+
+  console.log(`\n${BLUE}📊 Watcher stats:${NC}`);
+  console.log(`  ${YELLOW}Uptime:${NC} ${mins}m ${secs}s`);
+  console.log(`  ${YELLOW}Changes detected:${NC} ${stats.changes}`);
+  console.log(`  ${YELLOW}Unique files:${NC} ${stats.filesChanged.size}`);
+  console.log(`  ${YELLOW}Cache clears:${NC} ${stats.clears}`);
 }
 
-// --- Watcher creation ---
+// --- Watcher ---
 let watcherHandle = null;
 
 export function getWatcherHandle() {
@@ -74,55 +74,52 @@ export function getWatcherHandle() {
 export async function startWatcher(config) {
   const drupalRoot = config.drupalRoot;
   const rootPath = path.join(process.cwd(), drupalRoot);
+  const routeSuffixes = config.routes.map(r =>
+    r.replace(`${drupalRoot}/`, "").replace(drupalRoot, "")
+  );
 
-  const routeSuffixes = config.routes.map(r => r.replace(`${drupalRoot}/`, "").replace(drupalRoot, ""));
+  function onChange(changePath, eventType) {
+    if (!changePath) return;
 
-  const onChange = (info) => {
-    if (!info?.path) return;
-    const normalized = path.normalize(info.path);
+    const normalized = path.normalize(String(changePath));
 
-    // Ignore system directories
     if (EXCLUDED_DIRS.some(dir => normalized.startsWith(dir + "/") || normalized === dir)) return;
+    if (!routeSuffixes.some(s => normalized.startsWith(s))) return;
+    if (!config.patterns.some(p => changePath.endsWith(p))) return;
+    if (config.excludePatterns?.some(p => changePath.endsWith(p))) return;
 
-    // Check if in watched routes
-    if (!routeSuffixes.some(suffix => normalized.startsWith(suffix))) return;
-
-    // Check pattern match
-    if (!config.patterns.some(p => info.path.endsWith(p))) return;
-
-    // Check exclude patterns
-    if (config.excludePatterns?.some(p => info.path.endsWith(p))) return;
-
-    // Track change
-    if (!changeAccumulator.has(info.path)) {
-      const displayName = path.basename(info.path);
+    if (!changeAccumulator.has(changePath)) {
+      const displayName = path.basename(changePath);
       const total = changeAccumulator.size + 1;
       console.log(`${GREEN}📝 ${displayName}${total > 1 ? ` (${total})` : ""}${NC}`);
       stats.changes++;
-      stats.filesChanged.add(info.path);
+      stats.filesChanged.add(changePath);
     }
-    changeAccumulator.set(info.path, Date.now());
+    changeAccumulator.set(changePath, Date.now());
     scheduleCacheClear(config);
-  };
+  }
 
-  const onError = (err) => {
-    console.error(`${RED}❌ Error en watcher:${NC} ${err?.message || err}`);
-  };
+  function onError(err) {
+    console.error(`${RED}✖ Watcher error:${NC} ${err?.message || err}`);
+  }
 
   try {
     watcherHandle = Bun.watch({
       paths: [rootPath],
       recursive: true,
-      onChange,
+      onChange: (info) => {
+        if (info?.path) onChange(info.path, info.type);
+      },
       onError,
     });
   } catch {
-    const { watch: fsWatch } = await import("fs");
-    watcherHandle = fsWatch(rootPath, { recursive: true }, (eventType, filename) => {
-      if (!filename) return;
-      onChange({ path: filename, type: eventType });
+    const { watch } = await import("fs");
+    watcherHandle = watch(rootPath, { recursive: true }, (eventType, filename) => {
+      if (filename) onChange(filename, eventType);
     });
-    watcherHandle.on("error", onError);
+    if (watcherHandle && typeof watcherHandle.on === "function") {
+      watcherHandle.on("error", onError);
+    }
   }
 
   stats.startTime = Date.now();

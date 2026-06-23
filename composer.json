@@ -1,6 +1,6 @@
 {
   "name": "irving-frias/drupal-watcher",
-  "description": "Watcher para Drupal que vigila módulos y temas custom y ejecuta drush cr. Soporta DDEV/Lando, con gestión de rutas.",
+  "description": "Drupal file watcher — monitors custom modules/themes and auto-runs drush cr. Supports DDEV, Lando, and local environments.",
   "type": "library",
   "license": "MIT",
   "bin": [
@@ -11,7 +11,10 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "@php -r \"echo '🚀 Drupal Watcher instalado. Ejecuta \\'vendor/bin/drupal-watcher list\\' para empezar.\\n';\""
+      "@php -r \"echo '🚀 Drupal Watcher installed. Run \\'vendor/bin/drupal-watcher list\\' to get started.\\n';\""
     ]
+  },
+  "support": {
+    "issues": "https://github.com/irving-frias/drupal-watcher/issues"
   }
 }

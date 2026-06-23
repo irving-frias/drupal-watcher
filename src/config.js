@@ -1,38 +1,45 @@
 import { existsSync } from "fs";
 import path from "path";
-import { RED, NC, POSSIBLE_DOCROOTS } from "./utils.js";
+import { RED, NC, ERROR, WARN, POSSIBLE_DOCROOTS } from "./utils.js";
 
 function getRoot(r) {
   return r || process.cwd();
 }
 
-function getConfigFile(root) {
+function configPath(root) {
   return path.join(getRoot(root), "watcher.config.json");
 }
 
-function getPidFilePath(root) {
+function pidPath(root) {
   return path.join(getRoot(root), ".drupal-watcher.pid");
 }
 
-// --- Memoized caches (per-root) ---
 const _rootCache = new Map();
 
 export function detectDrupalRoot(root) {
   const r = getRoot(root);
-  if (_rootCache.has(r) && _rootCache.get(r).root) return _rootCache.get(r).root;
+  const cached = _rootCache.get(r);
+  if (cached && "root" in cached) return cached.root;
+
   for (const dir of POSSIBLE_DOCROOTS) {
     const fullPath = path.join(r, dir);
     if (!existsSync(fullPath)) continue;
-    if (existsSync(path.join(fullPath, "core")) ||
-        existsSync(path.join(fullPath, "modules")) ||
-        existsSync(path.join(fullPath, "themes"))) {
-      if (!_rootCache.has(r)) _rootCache.set(r, {});
-      _rootCache.get(r).root = dir;
+    if (
+      existsSync(path.join(fullPath, "core")) ||
+      existsSync(path.join(fullPath, "modules")) ||
+      existsSync(path.join(fullPath, "themes")) ||
+      existsSync(path.join(fullPath, "index.php"))
+    ) {
+      const entry = _rootCache.get(r) || {};
+      entry.root = dir;
+      _rootCache.set(r, entry);
       return dir;
     }
   }
-  if (!_rootCache.has(r)) _rootCache.set(r, {});
-  _rootCache.get(r).root = null;
+
+  const entry = _rootCache.get(r) || {};
+  entry.root = null;
+  _rootCache.set(r, entry);
   return null;
 }
 
@@ -40,7 +47,7 @@ export function getDefaultConfig(root) {
   const drupalRoot = detectDrupalRoot(root) || "docroot";
   return {
     routes: [`${drupalRoot}/modules/custom`, `${drupalRoot}/themes/custom`],
-    patterns: [".html.twig", ".inc", ".yml", ".module", ".theme"],
+    patterns: [".html.twig", ".inc", ".yml", ".module", ".theme", ".php", ".info.yml", ".services.yml"],
     excludePatterns: [],
     debounce: 800,
     drushCmd: null,
@@ -53,19 +60,22 @@ export function getDefaultConfig(root) {
 
 export async function loadConfig(root) {
   const r = getRoot(root);
-  if (_rootCache.has(r) && _rootCache.get(r).config) return _rootCache.get(r).config;
+  const cached = _rootCache.get(r);
+  if (cached && cached.config) return cached.config;
 
-  const configFile = Bun.file(getConfigFile(r));
-  if (!(await configFile.exists())) {
+  const file = Bun.file(configPath(r));
+
+  if (!(await file.exists())) {
     const def = getDefaultConfig(r);
-    await Bun.write(getConfigFile(r), JSON.stringify(def, null, 2));
-    if (!_rootCache.has(r)) _rootCache.set(r, {});
-    _rootCache.get(r).config = { ...def };
-    return _rootCache.get(r).config;
+    await Bun.write(configPath(r), JSON.stringify(def, null, 2));
+    const entry = _rootCache.get(r) || {};
+    entry.config = { ...def };
+    _rootCache.set(r, entry);
+    return entry.config;
   }
 
   try {
-    const raw = await configFile.text();
+    const raw = await file.text();
     const config = JSON.parse(raw);
 
     if (!config.drupalRoot) {
@@ -73,9 +83,9 @@ export async function loadConfig(root) {
       if (detected) {
         config.drupalRoot = detected;
         config.routes = config.routes.map(route => {
-          const p = route.split("/");
-          if (p.length > 0 && POSSIBLE_DOCROOTS.includes(p[0]) && p[0] !== detected) {
-            return route.replace(p[0], detected);
+          const parts = route.split("/");
+          if (parts.length > 0 && POSSIBLE_DOCROOTS.includes(parts[0]) && parts[0] !== detected) {
+            return route.replace(parts[0], detected);
           }
           return route;
         });
@@ -83,45 +93,48 @@ export async function loadConfig(root) {
       }
     }
 
-    if (!_rootCache.has(r)) _rootCache.set(r, {});
-    _rootCache.get(r).config = { ...getDefaultConfig(r), ...config };
-    return _rootCache.get(r).config;
+    const entry = _rootCache.get(r) || {};
+    entry.config = { ...getDefaultConfig(r), ...config };
+    _rootCache.set(r, entry);
+    return entry.config;
   } catch {
-    console.error(`${RED}Error al leer configuración. Usando defaults.${NC}`);
+    console.error(`${ERROR} Failed to read configuration file. Using defaults.`);
     const def = getDefaultConfig(r);
-    if (!_rootCache.has(r)) _rootCache.set(r, {});
-    _rootCache.get(r).config = { ...def };
-    return _rootCache.get(r).config;
+    const entry = _rootCache.get(r) || {};
+    entry.config = { ...def };
+    _rootCache.set(r, entry);
+    return entry.config;
   }
 }
 
 export async function saveConfig(config, root) {
   const r = getRoot(root);
-  await Bun.write(getConfigFile(r), JSON.stringify(config, null, 2));
-  if (_rootCache.has(r)) _rootCache.get(r).config = null;
+  await Bun.write(configPath(r), JSON.stringify(config, null, 2));
+  const cached = _rootCache.get(r);
+  if (cached) cached.config = null;
 }
 
 // --- PID file ---
 export function getPidFile(root) {
-  return getPidFilePath(root);
+  return pidPath(root);
 }
 
 export async function writePid(root) {
-  await Bun.write(getPidFilePath(root), String(process.pid));
+  await Bun.write(pidPath(root), String(process.pid));
 }
 
 export async function removePid(root) {
   try {
-    await Bun.write(getPidFilePath(root), "");
+    await Bun.write(pidPath(root), "");
     const { rm } = await import("fs/promises");
-    await rm(getPidFilePath(root), { force: true });
+    await rm(pidPath(root), { force: true });
   } catch {}
 }
 
 export async function checkPid(root) {
-  const pidFile = Bun.file(getPidFilePath(root));
-  if (!(await pidFile.exists())) return null;
-  const pid = (await pidFile.text()).trim();
+  const file = Bun.file(pidPath(root));
+  if (!(await file.exists())) return null;
+  const pid = (await file.text()).trim();
   if (!pid) return null;
   const result = Bun.spawnSync(["ps", "-p", pid, "-o", "pid="]);
   return result.exitCode === 0 ? pid : "stale";
