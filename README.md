@@ -21,7 +21,7 @@
 - [Contribución](#contribución)
 - [Licencia](#licencia)
 
-## 🤔 ¿Qué hace?
+## ¿Qué hace?
 
 Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. **Drupal Watcher**:
 
@@ -31,35 +31,35 @@ Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. 
 - **Se adapta** a tu entorno: DDEV, Lando o local
 - **Persiste** tus rutas personalizadas en un archivo de configuración
 
-## ✨ Características
+## Características
 
-### 🔧 Gestión de rutas
+### Gestión de rutas
 - Añade, elimina y lista rutas a vigilar
 - Persistencia en `watcher.config.json`
 - Validación de existencia de carpetas
 
-### 🎯 Optimizado para Drupal
+### Optimizado para Drupal
 - Detecta automáticamente DDEV, Lando o local
 - Usa el comando Drush correcto según el entorno
 - Debounce inteligente (800ms por defecto)
 
-### ⚡ Ultra rápido
+### Ultra rápido
 - Instalación con Bun (10-30x más rápido que npm)
 - Arranque en frío instantáneo (~8ms)
 - Bajo consumo de memoria
 
-### 🛠️ Desarrollado con Bun
+### Desarrollado con Bun 🛠️
 - TypeScript/JavaScript moderno
 - Sin dependencias externas (solo Bun)
 - Ejecutable como binario standalone (opcional)
 
-## 📦 Requisitos
+## Requisitos
 
 - **PHP 8.4+** (para el wrapper `phpdot/bun`)
 - **Composer** (gestión de dependencias de PHP)
 - **Drupal** con Drush instalado
 
-## 🚀 Instalación
+## Instalación
 
 ### Método 1: Desde Packagist (recomendado)
 
@@ -97,7 +97,7 @@ composer require irving-frias/drupal-watcher:@dev
 
 La primera vez que ejecutes el watcher, se descargará automáticamente el binario de Bun (requiere conexión a internet).
 
-## 🎮 Comandos
+## Comandos
 
 Todos los comandos se ejecutan desde la raíz de tu proyecto Drupal.
 
@@ -144,7 +144,7 @@ composer watcher:remove docroot/modules/contrib
 composer watcher:reset
 ```
 
-## ⚙️ Configuración
+## Configuración
 
 El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proyecto.
 
@@ -171,13 +171,13 @@ El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proy
 | `debounce` | Tiempo de espera (ms) antes de ejecutar `drush cr` | `800` |
 | `drushCmd` | Comando Drush personalizado. Si es `null`, se detecta automáticamente | `null` |
 
-### 📝 Notas sobre la configuración
+### Notas sobre la configuración
 
 - **Patrones**: Añade o quita extensiones según tus necesidades
 - **Debounce**: Ajusta según el rendimiento de tu proyecto (proyectos grandes pueden necesitar más tiempo)
 - **Drush personalizado**: Si usas un binario Drush en una ubicación específica, defínelo aquí
 
-## 🏃 Ejemplos de uso
+## Ejemplos de uso
 
 ### Ejemplo 1: Watcher básico
 
@@ -225,7 +225,7 @@ bun build --compile ./vendor/irving-frias/drupal-watcher/bin/drupal-watcher --ou
 ./drupal-watcher
 ```
 
-## 🔧 Solución de problemas
+## Solución de problemas
 
 ### ❌ Error: `command not found: bun`
 
@@ -269,7 +269,7 @@ Aumenta el valor de `debounce` en `watcher.config.json`:
 }
 ```
 
-## ❓ Preguntas frecuentes
+## Preguntas frecuentes
 
 ### ¿Por qué usar Bun en lugar de Node.js?
 
@@ -296,7 +296,7 @@ No directamente. Cada proyecto tiene su propio watcher y configuración. Ejecuta
 
 Por defecto: `.html.twig`, `.inc`, `.yml`, `.module`, `.theme`. Puedes añadir más patrones en `watcher.config.json`.
 
-## 🤝 Contribución
+## Contribución
 
 ¡Las contribuciones son bienvenidas!
 
@@ -310,13 +310,13 @@ Por defecto: `.html.twig`, `.inc`, `.yml`, `.module`, `.theme`. Puedes añadir m
 
 Usa el [issue tracker](https://github.com/irving-frias/drupal-watcher/issues) para reportar bugs o sugerir mejoras.
 
-## 📄 Licencia
+## Licencia
 
 Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para más detalles.
 
 ---
 
-## 🌟 Agradecimientos
+## Agradecimientos
 
 - [Bun](https://bun.sh) - Por su increíble velocidad
 - [phpdot/bun](https://packagist.org/packages/phpdot/bun) - Por el wrapper para Composer
