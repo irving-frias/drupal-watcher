@@ -27,20 +27,21 @@ Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. 
 - **Vigila** en tiempo real los archivos de tus módulos y temas custom
 - **Detecta automáticamente** cambios en archivos `.html.twig`, `.inc`, `.yml`, `.module` y `.theme`
 - **Ejecuta `drush cr`** de forma inteligente (con debounce para no saturar el sistema)
-- **Se adapta** a tu entorno: DDEV, Lando o local
+- **Compatible** con DDEV, Lando y entornos locales (usa `ddev drupal-watcher` en DDEV)
 - **Persiste** tus rutas personalizadas en un archivo de configuración
 
 ## Características
 
 ### Gestión de rutas
-- Añade, elimina y lista rutas a vigilar
+- Añade, elimina, lista y restablece rutas a vigilar
+- Filtrar rutas con `--watch=<ruta>` y `--no-watch=<ruta>`
 - Persistencia en `watcher.config.json`
 - Validación de existencia de carpetas
 
 ### Optimizado para Drupal
-- Detecta automáticamente DDEV, Lando o local
-- Usa el comando Drush correcto según el entorno
+- Detecta automáticamente el docroot de Drupal (docroot, web, html...)
 - Debounce inteligente (800ms por defecto)
+- Compatible con DDEV: ejecuta `ddev drupal-watcher <comando>`
 
 ### Ultra rápido
 - Instalación con Bun (10-30x más rápido que npm)
@@ -48,9 +49,11 @@ Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. 
 - Bajo consumo de memoria
 
 ### Desarrollado con Bun 🛠️
-- TypeScript/JavaScript moderno
+- JavaScript modular (src/) con arquitectura limpia
 - Sin dependencias externas (solo Bun)
 - Ejecutable como binario standalone (opcional)
+- Singleton con PID file para evitar duplicados
+- Estadísticas en tiempo real al detener el watcher
 
 ## Requisitos
 
@@ -99,7 +102,11 @@ Todos los comandos se ejecutan desde la raíz de tu proyecto Drupal usando el bi
 ### Iniciar el watcher
 
 ```bash
+# Local o Lando
 vendor/bin/drupal-watcher start
+
+# DDEV
+ddev drupal-watcher start
 ```
 
 Verás algo como:
@@ -107,8 +114,7 @@ Verás algo como:
 ```
 🚀 Iniciando Drupal Watcher
 📁 Directorio raíz: docroot
-🌐 Entorno: ddev
-🔧 Drush: ddev drush cr
+🔧 Drush: drush cr
 👀 Vigilando rutas:
   - docroot/modules/custom
   - docroot/themes/custom
@@ -141,6 +147,27 @@ vendor/bin/drupal-watcher remove docroot/modules/contrib
 vendor/bin/drupal-watcher reset
 ```
 
+### Ver estado del watcher
+
+```bash
+vendor/bin/drupal-watcher status
+```
+
+Muestra si el watcher está activo, su PID y tiempo de ejecución.
+
+### Filtrar rutas al iniciar
+
+```bash
+# Solo vigilar una ruta específica
+vendor/bin/drupal-watcher start --watch=modules/mi-modulo
+
+# Excluir una ruta específica
+vendor/bin/drupal-watcher start --no-watch=modules/contrib
+
+# Terminar si Drush no responde
+vendor/bin/drupal-watcher start --abort-on-drush-error
+```
+
 ### Comandos como alias de Composer (opcional)
 
 Si prefieres `composer watcher:*`, añade estos scripts a tu `composer.json` raíz:
@@ -149,6 +176,7 @@ Si prefieres `composer watcher:*`, añade estos scripts a tu `composer.json` ra�
 "scripts": {
     "watcher:start": "vendor/bin/drupal-watcher start",
     "watcher:list": "vendor/bin/drupal-watcher list",
+    "watcher:status": "vendor/bin/drupal-watcher status",
     "watcher:add": "vendor/bin/drupal-watcher add",
     "watcher:remove": "vendor/bin/drupal-watcher remove",
     "watcher:reset": "vendor/bin/drupal-watcher reset"
@@ -209,8 +237,11 @@ El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proy
 # Instalación
 composer require irving-frias/drupal-watcher
 
-# Iniciar watcher
+# Iniciar watcher (local o Lando)
 vendor/bin/drupal-watcher start
+
+# En DDEV
+ddev drupal-watcher start
 
 # Editar un archivo .twig...
 📝 mi-plantilla.html.twig
@@ -248,7 +279,7 @@ Ejecuta `drush cex` automáticamente tras cada cambio:
 
 ```json
 {
-  "postClearCommands": ["ddev drush cex"]
+  "postClearCommands": ["drush cex"]
 }
 ```
 
@@ -257,8 +288,36 @@ Ejecuta `drush cex` automáticamente tras cada cambio:
 Si no quieres depender de Composer/Bun para el día a día:
 
 ```bash
+# Compilar desde el paquete de Composer
 bun build --compile ./vendor/irving-frias/drupal-watcher/bin/drupal-watcher --outfile ./drupal-watcher
-./drupal-watcher
+
+# O desde el repositorio local
+bun run build          # compila para el SO actual
+bun run build:mac      # macOS (ARM64)
+bun run build:linux    # Linux (x64)
+bun run build:win      # Windows (x64)
+
+./drupal-watcher start
+```
+
+### Ejemplo 6: Ejecutar tests
+
+```bash
+bun test                    # ejecuta tests una vez
+bun run test:watch          # modo watch
+```
+
+### Ejemplo 7: Flags avanzados del comando start
+
+```bash
+# Abortar si Drush no responde
+vendor/bin/drupal-watcher start --abort-on-drush-error
+
+# Vigilar solo una ruta específica
+vendor/bin/drupal-watcher start --watch=docroot/modules/custom/mi-modulo
+
+# Excluir contrib modules
+vendor/bin/drupal-watcher start --no-watch=docroot/modules/contrib
 ```
 
 ## Solución de problemas
@@ -275,11 +334,11 @@ Bun no está instalado globalmente en tu sistema. Verifica:
 El watcher busca Drush en:
 - `vendor/bin/drush` (proyecto Drupal)
 - `bin/drush` (alternativa)
-- Comandos de DDEV/Lando
 
 Verifica que:
 1. Drush está instalado: `composer require drush/drush`
 2. Estás ejecutando desde la raíz del proyecto Drupal
+3. Si usas DDEV, ejecuta `ddev drupal-watcher <comando>` en lugar de `vendor/bin/drupal-watcher <comando>`
 
 ### ❌ Error: `Ninguna de las rutas configuradas existe`
 
