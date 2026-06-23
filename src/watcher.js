@@ -1,6 +1,6 @@
 import path from "path";
 import { EXCLUDED_DIRS, timestamp, green, red, cyan, yellow, blue } from "./utils.js";
-import { getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
+import { getDrushCommand, getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
 
 // --- Runtime stats ---
 export const stats = {
@@ -22,16 +22,44 @@ export function resetDebounce() {
   changeAccumulator.clear();
 }
 
-async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
+function getCacheClearArgs(config, files) {
+  const commandsPerPattern = config.commandsPerPattern || {};
+  const matchedCommands = new Set();
+
+  for (const file of files) {
+    for (const [pattern, command] of Object.entries(commandsPerPattern)) {
+      if (file.endsWith(pattern)) {
+        matchedCommands.add(command);
+      }
+    }
+  }
+
+  if (matchedCommands.size === 1) {
+    const specificCommand = [...matchedCommands][0];
+    const drushCmdStr = getDrushCommand(config);
+    const parts = drushCmdStr.split(/\s+/);
+    const specificParts = specificCommand.split(/\s+/);
+    return {
+      cmd: parts[0],
+      args: [...parts.slice(1), ...specificParts, ...(config.drushArgs || [])],
+    };
+  }
+
+  return getDrushSpawnArgs(config);
+}
+
+async function runCacheClear(config) {
   const pendingChanges = changeAccumulator;
   changeAccumulator = new Map();
   const files = Array.from(pendingChanges.keys());
   if (files.length === 0) return;
 
+  const { cmd, args } = getCacheClearArgs(config, files);
   const suffix = files.length > 1 ? ` (${files.length} files)` : "";
-  console.log(`${timestamp()} ${yellow("🔄")} Clearing cache...${suffix}`);
+  const cmdLabel = [...new Set([cmd, ...args])].join(" ");
+  console.log(`${timestamp()} ${yellow("🔄")} ${cyan(cmdLabel)}${suffix}`);
 
-  const { exitCode, stderr, duration } = await runDrush(drushBase, drushArgsArray);
+  const { exitCode, stderr, duration } = await runDrush(cmd, args);
 
   if (exitCode === 0) {
     console.log(`${timestamp()} ${green("✔")} Cache cleared in ${duration}s`);
@@ -40,15 +68,14 @@ async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
     console.error(`${timestamp()} ${red("✖")} Drush error (exit ${exitCode}): ${stderr || "drush unavailable"}`);
   }
 
-  await runPostClearCommands(postClearCommands);
+  await runPostClearCommands(config.postClearCommands || []);
 }
 
 function scheduleCacheClear(config) {
   if (debounceTimer) clearTimeout(debounceTimer);
-  const { cmd, args } = getDrushSpawnArgs(config);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
-    runCacheClear(cmd, args, config.postClearCommands || []);
+    runCacheClear(config);
   }, config.debounce || 800);
 }
 
