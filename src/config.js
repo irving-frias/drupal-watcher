@@ -74,7 +74,7 @@ export function getDefaultConfig(root) {
       ".yml": "cc plugin",
       ".info.yml": "cr",
       ".services.yml": "cr",
-      ".php": "cr",
+      ".php": "cc plugin",
     },
     drupalRoot,
   };

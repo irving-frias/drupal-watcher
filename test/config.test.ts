@@ -256,7 +256,7 @@ describe("Config validation", () => {
     expect(config.commandsPerPattern[".html.twig"]).toBe("custom-command");
     // Defaults still present
     expect(config.commandsPerPattern[".theme"]).toBe("cc theme-registry");
-    expect(config.commandsPerPattern[".php"]).toBe("cr");
+    expect(config.commandsPerPattern[".php"]).toBe("cc plugin");
     expect(config.commandsPerPattern[".yml"]).toBe("cc plugin");
   });
 
@@ -269,7 +269,7 @@ describe("Config validation", () => {
     const config = await loadConfig(TEST_DIR);
     // In-memory config should have the full defaults merged
     expect(config.commandsPerPattern[".html.twig"]).toBe("cc twig");
-    expect(config.commandsPerPattern[".php"]).toBe("cr");
+    expect(config.commandsPerPattern[".php"]).toBe("cc plugin");
     expect(config.commandsPerPattern[".yml"]).toBe("cc plugin");
     // File on disk still has the old value (no overwrite)
     const onDisk = JSON.parse(await Bun.file(path.join(TEST_DIR, "watcher.config.json")).text());
@@ -290,7 +290,7 @@ describe("Config validation", () => {
     expect(Array.isArray(config.commandsPerPattern)).toBe(false);
     // Falls back to all defaults
     expect(config.commandsPerPattern[".html.twig"]).toBe("cc twig");
-    expect(config.commandsPerPattern[".php"]).toBe("cr");
+    expect(config.commandsPerPattern[".php"]).toBe("cc plugin");
   });
 
   it("getCacheClearArgs returns drush cr when no commandsPerPattern", async () => {
