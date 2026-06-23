@@ -46,6 +46,7 @@ const GLOBAL_FLAGS = [
   ["--no-dotfiles", "Ignore dotfiles (.*)"],
   ["--log-file=<path>", "Save output to a file"],
   ["--config=<path>", "Use a custom config file"],
+  ["--commands-per-pattern=<p>=<c>", "Map a file pattern to a drush command (repeatable)"],
   ["--version, -V", "Show version number"],
 ];
 
@@ -75,12 +76,17 @@ export function cmdHelp(command) {
       ["--no-watch=<path>", "Exclude a specific route (substring match)"],
       ["--dry-run", "Show what would happen without starting"],
       ["--verbose, -v", "Show full Drush output"],
+      ["--debounce=<ms>", "Override debounce interval"],
+      ["--no-dotfiles", "Ignore dotfiles (.*)"],
+      ["--log-file=<path>", "Save output to a file"],
+      ["--commands-per-pattern=<p>=<c>", "Map pattern to drush command (repeatable)"],
     ]);
     printSection("Examples", [
       `${BIN} start`,
       `${BIN} start --abort-on-drush-error`,
       `${BIN} start --watch modules/my-module`,
       `${BIN} start --dry-run`,
+      `${BIN} start --commands-per-pattern=.html.twig="cc twig"`,
     ]);
     return;
   }
@@ -320,6 +326,7 @@ export async function cmdStart(flags = {}) {
   const {
     abortOnDrushError = false, watchRoutes = [], noWatchRoutes = [],
     dryRun = false, verbose = false, debounce, noDotfiles = false, logFile,
+    commandsPerPattern = {},
   } = flags;
 
   if (dryRun) console.log(`${cyan("🏁")} Dry run mode — no watcher will be started\n`);
@@ -337,6 +344,9 @@ export async function cmdStart(flags = {}) {
   if (debounce) config.debounce = debounce;
   if (noDotfiles) {
     config.excludePatterns = [...(config.excludePatterns || []), ".*"];
+  }
+  if (Object.keys(commandsPerPattern).length > 0) {
+    config.commandsPerPattern = { ...(config.commandsPerPattern || {}), ...commandsPerPattern };
   }
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
   const drushPath = getDrushCommand(config);
