@@ -135,7 +135,9 @@ export function stopWatcher() {
     try {
       if (typeof watcherHandle.stop === "function") watcherHandle.stop();
       else if (typeof watcherHandle.close === "function") watcherHandle.close();
-    } catch {}
+    } catch (e) {
+      console.warn(`Failed to stop watcher: ${e.message}`);
+    }
     watcherHandle = null;
   }
 }

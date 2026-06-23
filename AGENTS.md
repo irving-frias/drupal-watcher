@@ -1,7 +1,7 @@
 # Drupal Watcher — Project Guide
 
 ## Commands
-- **Test**: `bun test` (34 tests)
+- **Test**: `bun test` (41 tests)
 - **Watch mode**: `bun run test:watch`
 - **Run**: `vendor/bin/drupal-watcher <command>` or `bun run bin/drupal-watcher <command>`
 - **Build standalone**: `bun run build`
