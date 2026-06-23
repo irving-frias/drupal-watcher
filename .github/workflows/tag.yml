@@ -1,0 +1,72 @@
+name: Tag on push to main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: latest
+        run: |
+          LATEST=$(git tag --sort=-version:refname | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$LATEST" ]; then LATEST="0.0.0"; fi
+          echo "tag=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest tag: $LATEST"
+
+      - name: Determine bump type from commits
+        id: bump
+        run: |
+          LATEST="${{ steps.latest.outputs.tag }}"
+          PREV="$LATEST"
+          if [ "$PREV" = "0.0.0" ]; then
+            PREV=""
+          fi
+
+          if [ -n "$PREV" ]; then
+            COMMITS=$(git log --pretty=format:"%s" "$PREV..HEAD" 2>/dev/null || git log --pretty=format:"%s")
+          else
+            COMMITS=$(git log --pretty=format:"%s")
+          fi
+
+          BUMP="patch"
+          while IFS= read -r msg; do
+            if echo "$msg" | grep -qiE "^(feat|feature)(\(.*\))?!:" || \
+               echo "$msg" | grep -qiE "BREAKING CHANGE"; then
+              BUMP="major"
+              break
+            fi
+            if echo "$msg" | grep -qiE "^(feat|feature)(\(.*\))?:"; then
+              BUMP="minor"
+            fi
+          done <<< "$COMMITS"
+
+          IFS='.' read -r MAJ MIN PAT <<< "$LATEST"
+          case "$BUMP" in
+            major) MAJ=$((MAJ + 1)); MIN=0; PAT=0 ;;
+            minor) MIN=$((MIN + 1)); PAT=0 ;;
+            patch) PAT=$((PAT + 1)) ;;
+          esac
+          NEW_TAG="${MAJ}.${MIN}.${PAT}"
+          echo "tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "Bump: $BUMP, New tag: $NEW_TAG"
+
+      - name: Create and push tag
+        run: |
+          TAG="${{ steps.bump.outputs.tag }}"
+          echo "Creating tag $TAG"
+          git tag "$TAG"
+          git push origin "$TAG"
