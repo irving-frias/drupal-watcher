@@ -10,6 +10,9 @@
     "php": ">=8.4",
     "phpdot/bun": "^1.0"
   },
+  "require-dev": {
+    "symfony/console": "^7.0|^8.0"
+  },
   "scripts": {
     "post-install-cmd": [
       "@php -r \"echo '✅ Drupal Watcher instalado. Comandos disponibles:\\n'; echo '  composer watcher:start  - Inicia el watcher\\n'; echo '  composer watcher:list   - Muestra rutas configuradas\\n'; echo '  composer watcher:add   - Añade una nueva ruta\\n'; echo '  composer watcher:remove - Elimina una ruta\\n'; echo '  composer watcher:reset - Restablece rutas por defecto\\n';\""
