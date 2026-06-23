@@ -1,5 +1,5 @@
 import path from "path";
-import { RED, GREEN, YELLOW, BLUE, NC, CYAN, EXCLUDED_DIRS, timestamp, green, red, cyan, yellow, blue } from "./utils.js";
+import { EXCLUDED_DIRS, timestamp, green, red, cyan, yellow, blue } from "./utils.js";
 import { getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
 
 // --- Runtime stats ---
@@ -23,8 +23,9 @@ export function resetDebounce() {
 }
 
 async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
-  const files = Array.from(changeAccumulator.keys());
-  changeAccumulator.clear();
+  const pendingChanges = changeAccumulator;
+  changeAccumulator = new Map();
+  const files = Array.from(pendingChanges.keys());
   if (files.length === 0) return;
 
   const suffix = files.length > 1 ? ` (${files.length} files)` : "";
@@ -79,11 +80,7 @@ export function getWatcherHandle() {
 }
 
 export async function startWatcher(config) {
-  const drupalRoot = config.drupalRoot;
-  const rootPath = path.join(process.cwd(), drupalRoot);
-  const routeSuffixes = config.routes.map(r =>
-    r.replace(`${drupalRoot}/`, "").replace(drupalRoot, "")
-  );
+  const watchPaths = config.routes.map(r => path.join(process.cwd(), r));
 
   function onChange(changePath, eventType) {
     if (!changePath) return;
@@ -91,12 +88,11 @@ export async function startWatcher(config) {
     const normalized = path.normalize(String(changePath));
 
     if (EXCLUDED_DIRS.some(dir => normalized.startsWith(dir + "/") || normalized === dir)) return;
-    if (!routeSuffixes.some(s => normalized.startsWith(s))) return;
     if (!config.patterns.some(p => changePath.endsWith(p))) return;
     if (config.excludePatterns?.some(p => changePath.endsWith(p))) return;
 
     if (!changeAccumulator.has(changePath)) {
-      const displayName = formatChangePath(rootPath, changePath);
+      const displayName = formatChangePath(process.cwd(), changePath);
       const pending = changeAccumulator.size + 1;
       console.log(`${timestamp()} ${green("📝")} ${displayName} ${cyan(`(${pending} pending)`)}`);
       stats.changes++;
@@ -112,7 +108,7 @@ export async function startWatcher(config) {
 
   try {
     watcherHandle = Bun.watch({
-      paths: [rootPath],
+      paths: watchPaths,
       recursive: true,
       onChange: (info) => {
         if (info?.path) onChange(info.path, info.type);
@@ -122,12 +118,12 @@ export async function startWatcher(config) {
   } catch {
     const { watch } = await import("fs");
     console.log(`${timestamp()} ${cyan("ℹ")} Bun.watch unavailable, falling back to fs.watch`);
-    watcherHandle = watch(rootPath, { recursive: true }, (eventType, filename) => {
+    const watchers = watchPaths.map(p => watch(p, { recursive: true }, (eventType, filename) => {
       if (filename) onChange(filename, eventType);
-    });
-    if (watcherHandle && typeof watcherHandle.on === "function") {
-      watcherHandle.on("error", onError);
-    }
+    }));
+    watcherHandle = {
+      close: () => watchers.forEach(w => { try { w.close(); } catch {} }),
+    };
   }
 
   stats.startTime = Date.now();

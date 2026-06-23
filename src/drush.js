@@ -1,6 +1,6 @@
 import { existsSync, accessSync, constants } from "fs";
 import path from "path";
-import { P_INFO, P_SUCCESS, green, yellow, cyan } from "./utils.js";
+import { P_SUCCESS, yellow, cyan } from "./utils.js";
 
 export function getDrushCommand(config, options = {}) {
   if (config.drushCmd) return config.drushCmd;
@@ -47,7 +47,8 @@ export async function runPostClearCommands(commands) {
   for (const cmd of commands) {
     const t0 = Date.now();
     console.log(`  ${yellow("⚡")} ${cyan(cmd)}`);
-    const proc = Bun.spawn(["sh", "-c", cmd], { stdio: ["inherit", "inherit", "inherit"] });
+    const shell = process.platform === "win32" ? ["cmd", "/c"] : ["sh", "-c"];
+    const proc = Bun.spawn([...shell, cmd], { stdio: ["inherit", "inherit", "inherit"] });
     const exitCode = await proc.exited;
     const duration = ((Date.now() - t0) / 1000).toFixed(1);
     if (exitCode === 0) {

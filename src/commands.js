@@ -1,7 +1,6 @@
 import { existsSync } from "fs";
 import path from "path";
 import {
-  RED, GREEN, YELLOW, BLUE, CYAN, NC,
   P_ERROR, P_WARN, P_INFO, P_SUCCESS,
   green, yellow, blue, cyan, bold, dim, red,
   printHeader, printSection, POSSIBLE_DOCROOTS,
@@ -11,7 +10,7 @@ import {
   writePid, removePid, checkPid,
 } from "./config.js";
 import { getDrushCommand, getDrushSpawnArgs, healthCheck } from "./drush.js";
-import { startWatcher, stopWatcher, resetDebounce, printStats } from "./watcher.js";
+import { startWatcher, stopWatcher, resetDebounce, printStats, getWatcherHandle } from "./watcher.js";
 import { readFileSync } from "fs";
 
 const BIN = "vendor/bin/drupal-watcher";
@@ -164,11 +163,8 @@ export async function cmdStatus() {
     console.log(`   Run ${green(`${BIN} start`)} to start it.`);
     await removePid();
   } else {
-    const result = Bun.spawnSync(["ps", "-p", pid, "-o", "etime="]);
-    const elapsed = result.stdout.toString().trim();
     console.log(`${P_SUCCESS} Watcher is active`);
     console.log(`  ${yellow("PID:")} ${pid}`);
-    if (elapsed) console.log(`  ${yellow("Uptime:")} ${elapsed}`);
   }
 }
 
@@ -359,9 +355,15 @@ export async function cmdStart(flags = {}) {
     return;
   }
 
-  await writePid();
   config.routes = routes;
   await startWatcher(config);
+
+  if (!getWatcherHandle()) {
+    console.error(`${P_ERROR} Failed to start watcher.`);
+    process.exit(1);
+  }
+
+  await writePid();
 
   console.log(`\n${P_SUCCESS} Watcher active. Waiting for changes... (Ctrl+C to stop)`);
 
