@@ -260,6 +260,22 @@ describe("Config validation", () => {
     expect(config.commandsPerPattern[".yml"]).toBe("cc plugin");
   });
 
+  it("fills defaults from old config file with empty commandsPerPattern", async () => {
+    // Simulate a config file created before commandsPerPattern defaults existed
+    const oldConfig = { routes: ["docroot/modules/custom"], commandsPerPattern: {} };
+    await Bun.write(path.join(TEST_DIR, "watcher.config.json"), JSON.stringify(oldConfig));
+    const { loadConfig, invalidateConfigCache } = await import("../src/config");
+    invalidateConfigCache(TEST_DIR);
+    const config = await loadConfig(TEST_DIR);
+    // In-memory config should have the full defaults merged
+    expect(config.commandsPerPattern[".html.twig"]).toBe("cc twig");
+    expect(config.commandsPerPattern[".php"]).toBe("cr");
+    expect(config.commandsPerPattern[".yml"]).toBe("cc plugin");
+    // File on disk still has the old value (no overwrite)
+    const onDisk = JSON.parse(await Bun.file(path.join(TEST_DIR, "watcher.config.json")).text());
+    expect(onDisk.commandsPerPattern).toEqual({});
+  });
+
   it("uses all defaults when commandsPerPattern is empty", async () => {
     const { validateConfig } = await import("../src/config");
     const config = validateConfig({ commandsPerPattern: {} }, TEST_DIR);
