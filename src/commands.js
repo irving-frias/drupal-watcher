@@ -159,6 +159,13 @@ export async function cmdList() {
   if (config.postClearCommands?.length > 0) {
     console.log(`  ${yellow("Post-clear:")} ${config.postClearCommands.join("; ")}`);
   }
+  const cpp = config.commandsPerPattern;
+  if (cpp && Object.keys(cpp).length > 0) {
+    console.log(`  ${yellow("Commands per pattern:")}`);
+    for (const [pattern, cmd] of Object.entries(cpp)) {
+      console.log(`    ${cyan(pattern)} ${dim("→")} ${cmd}`);
+    }
+  }
 }
 
 // ── Status ────────────────────────────────────────────────

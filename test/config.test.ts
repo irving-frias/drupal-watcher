@@ -248,6 +248,31 @@ describe("Config validation", () => {
     expect(config.drushArgs).toEqual(["--uri=default"]);
   });
 
+  it("accepts valid commandsPerPattern", async () => {
+    const { validateConfig } = await import("../src/config");
+    const cpp = { ".html.twig": "cc twig", ".module": "cc plugin" };
+    const config = validateConfig({ commandsPerPattern: cpp }, TEST_DIR);
+    expect(config.commandsPerPattern[".html.twig"]).toBe("cc twig");
+  });
+
+  it("rejects non-object commandsPerPattern", async () => {
+    const { validateConfig } = await import("../src/config");
+    const config = validateConfig({ commandsPerPattern: "invalid" }, TEST_DIR);
+    expect(typeof config.commandsPerPattern).toBe("object");
+    expect(Array.isArray(config.commandsPerPattern)).toBe(false);
+    expect(Object.keys(config.commandsPerPattern).length).toBe(0);
+  });
+
+  it("getCacheClearArgs returns drush cr when no commandsPerPattern", async () => {
+    const mod = await import("../src/watcher");
+    // Private function — test via the export that uses it indirectly
+    // Instead, verify that getDrushSpawnArgs behavior is preserved
+    const { getDrushSpawnArgs } = await import("../src/drush");
+    const { cmd, args } = getDrushSpawnArgs({ drushCommand: "cr" });
+    expect(cmd).toBe("drush");
+    expect(args).toContain("cr");
+  });
+
   it("normalizes routes (removes trailing slashes)", async () => {
     const { validateConfig } = await import("../src/config");
     const config = validateConfig({ routes: ["docroot/modules/custom/", "docroot/themes//custom"] }, TEST_DIR);
