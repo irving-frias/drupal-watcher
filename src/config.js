@@ -1,6 +1,6 @@
 import { existsSync } from "fs";
 import path from "path";
-import { RED, NC, ERROR, WARN, POSSIBLE_DOCROOTS } from "./utils.js";
+import { P_ERROR, P_INFO, POSSIBLE_DOCROOTS, cyan } from "./utils.js";
 
 function getRoot(r) {
   return r || process.cwd();
@@ -68,6 +68,7 @@ export async function loadConfig(root) {
   if (!(await file.exists())) {
     const def = getDefaultConfig(r);
     await Bun.write(configPath(r), JSON.stringify(def, null, 2));
+    console.log(`${P_INFO} Created ${cyan("watcher.config.json")} with defaults.`);
     const entry = _rootCache.get(r) || {};
     entry.config = { ...def };
     _rootCache.set(r, entry);
@@ -98,7 +99,7 @@ export async function loadConfig(root) {
     _rootCache.set(r, entry);
     return entry.config;
   } catch {
-    console.error(`${ERROR} Failed to read configuration file. Using defaults.`);
+    console.error(`${P_ERROR} Failed to read ${cyan("watcher.config.json")}. The file may be corrupted. Using default configuration.`);
     const def = getDefaultConfig(r);
     const entry = _rootCache.get(r) || {};
     entry.config = { ...def };

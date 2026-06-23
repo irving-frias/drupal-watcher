@@ -1,8 +1,8 @@
 import { existsSync, accessSync, constants } from "fs";
 import path from "path";
-import { YELLOW, NC } from "./utils.js";
+import { P_INFO, P_SUCCESS, green, yellow, cyan } from "./utils.js";
 
-export function getDrushCommand(config) {
+export function getDrushCommand(config, options = {}) {
   if (config.drushCmd) return config.drushCmd;
 
   const vendorDrush = path.join(process.cwd(), "vendor/bin/drush");
@@ -35,15 +35,25 @@ export async function healthCheck(config) {
 }
 
 export async function runDrush(drushBase, drushArgsArray) {
+  const t0 = Date.now();
   const proc = Bun.spawn([drushBase, ...drushArgsArray], { stdout: "pipe", stderr: "pipe" });
   const exitCode = await proc.exited;
   const stderrText = await new Response(proc.stderr).text();
-  return { exitCode, stderr: stderrText };
+  const duration = ((Date.now() - t0) / 1000).toFixed(1);
+  return { exitCode, stderr: stderrText, duration };
 }
 
 export async function runPostClearCommands(commands) {
   for (const cmd of commands) {
-    console.log(`${YELLOW}⚡ ${cmd}${NC}`);
-    await Bun.spawn(["sh", "-c", cmd], { stdio: ["inherit", "inherit", "inherit"] }).exited;
+    const t0 = Date.now();
+    console.log(`  ${yellow("⚡")} ${cyan(cmd)}`);
+    const proc = Bun.spawn(["sh", "-c", cmd], { stdio: ["inherit", "inherit", "inherit"] });
+    const exitCode = await proc.exited;
+    const duration = ((Date.now() - t0) / 1000).toFixed(1);
+    if (exitCode === 0) {
+      console.log(`  ${P_SUCCESS} Post-clear done in ${duration}s`);
+    } else {
+      console.error(`  ${P_ERROR} Post-clear failed (exit ${exitCode}) in ${duration}s`);
+    }
   }
 }

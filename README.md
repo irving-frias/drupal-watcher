@@ -22,6 +22,24 @@
 - [Contributing](#contributing)
 - [License](#license)
 
+## Quick Start
+
+```bash
+# 1. Install in your Drupal project
+composer require irving-frias/drupal-watcher
+
+# 2. Start watching (local/Lando)
+vendor/bin/drupal-watcher start
+
+# Or with DDEV
+ddev drupal-watcher start
+
+# 3. Edit a file — drush cr runs automatically!
+📝 my-module.module
+🔄 Clearing cache...
+✔ Cache cleared in 2.3s
+```
+
 ## What it does
 
 Forget running `drush cr` manually every time you edit a file. **Drupal Watcher**:
@@ -160,15 +178,36 @@ Shows PID and uptime if running.
 ### Filter routes at startup
 
 ```bash
-# Watch only a specific route
+# Watch only a specific route (substring match)
 vendor/bin/drupal-watcher start --watch=modules/my-module
 
-# Exclude a specific route
+# Exclude a specific route (substring match)
 vendor/bin/drupal-watcher start --no-watch=modules/contrib
 
 # Abort if Drush is not responding
 vendor/bin/drupal-watcher start --abort-on-drush-error
+
+# Dry run — preview what would happen without starting
+vendor/bin/drupal-watcher start --dry-run
 ```
+
+### Global flags
+
+| Flag | Description |
+| :--- | :--- |
+| `--version`, `-V` | Show version number |
+| `--no-colors` | Disable colored output (useful for CI/logs) |
+| `--verbose`, `-v` | Show full Drush stdout/stderr output |
+
+### Runtime features
+
+- **Timestamps**: Every change and cache clear is prefixed with `[HH:MM:SS]`
+- **Pending counter**: Shows how many unique files are queued in the current debounce window, e.g. `📝 file.php (3 pending)`
+- **Cache clear duration**: Shows how long `drush cr` took, e.g. `✔ Cache cleared in 2.3s`
+- **Post-clear feedback**: Each post-clear command shows success/failure and duration
+- **Shutdown stats**: On Ctrl+C, shows uptime, total changes, unique files, and cache clears
+- **SIGTERM handling**: Also responds to `SIGTERM` for clean Docker/process manager shutdowns
+- **Reset confirmation**: `vendor/bin/drupal-watcher reset` asks for confirmation before removing custom routes
 
 ### Composer script aliases (optional)
 
@@ -246,7 +285,7 @@ src/
   watcher.js         # File watching, debounce, PID enforcement, stats
   utils.js           # Color constants, Drupal paths, helpers
 test/
-  config.test.ts     # Unit tests (14 tests, 0 failures)
+  config.test.ts     # Unit tests (21 tests, see below)
 ```
 
 ### Key design decisions
@@ -334,6 +373,18 @@ bun run test:watch    # watch mode
 vendor/bin/drupal-watcher start --abort-on-drush-error
 vendor/bin/drupal-watcher start --watch=docroot/modules/custom/my-module
 vendor/bin/drupal-watcher start --no-watch=docroot/modules/contrib
+vendor/bin/drupal-watcher start --dry-run
+vendor/bin/drupal-watcher start --no-colors
+vendor/bin/drupal-watcher start --verbose
+```
+
+### Example 8: Display version
+
+```bash
+vendor/bin/drupal-watcher --version
+# → drupal-watcher v0.3.0
+
+vendor/bin/drupal-watcher -V
 ```
 
 ## Troubleshooting
@@ -419,7 +470,7 @@ bun install
 ### Testing
 
 ```bash
-bun test              # 14 tests
+bun test              # 21 tests
 bun run test:watch    # watch mode
 ```
 
@@ -440,7 +491,33 @@ The repository includes a GitHub Action (`.github/workflows/tag.yml`) that autom
 |---|---|
 | `BREAKING CHANGE` or `feat!:...` | **major** |
 | `feat:...` | **minor** |
-| `fix:`, `refactor:`, `chore:`, `ci:`, etc | **patch** |
+| `fix:`, `refactor:`, `chore:`, `ci:`, `docs:`, etc | **patch** |
+
+### Commands reference
+
+| Command | Description |
+| :--- | :--- |
+| `start` | Start the file watcher |
+| `stop` (Ctrl+C / SIGTERM) | Stop the watcher (prints stats) |
+| `status` | Show PID and uptime if running |
+| `list` | Display current configuration |
+| `add <path>` | Add a route to watch |
+| `remove <path>` | Remove a watched route |
+| `reset` | Reset routes to defaults (with confirmation) |
+| `help [command]` | Show detailed help |
+
+### Flags reference
+
+| Flag | Applies to | Description |
+| :--- | :--- | :--- |
+| `--abort-on-drush-error` | `start` | Exit if Drush health check fails |
+| `--watch=<path>` | `start` | Filter routes to those containing `<path>` (substring) |
+| `--no-watch=<path>` | `start` | Exclude routes containing `<path>` (substring) |
+| `--dry-run` | `start` | Preview configuration without starting the watcher |
+| `--verbose`, `-v` | `start` | Show full Drush output |
+| `--no-colors` | all | Disable ANSI colors |
+| `--version`, `-V` | all | Show version number |
+| `--help`, `-h` | all | Show help |
 
 ## Contributing
 

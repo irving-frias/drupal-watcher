@@ -136,4 +136,60 @@ describe("Main", () => {
     expect(flags.noWatchRoutes).toEqual([]);
     expect(extra).toEqual([]);
   });
+
+  it("parses --dry-run flag", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--dry-run"]);
+    expect(flags.dryRun).toBe(true);
+  });
+
+  it("parses --verbose flag", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--verbose"]);
+    expect(flags.verbose).toBe(true);
+  });
+
+  it("parses -v alias", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["-v"]);
+    expect(flags.verbose).toBe(true);
+  });
+
+  it("parses --no-colors flag", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--no-colors"]);
+    expect(flags.noColors).toBe(true);
+  });
+
+  it("combines all new flags", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--dry-run", "--verbose", "--no-colors"]);
+    expect(flags.dryRun).toBe(true);
+    expect(flags.verbose).toBe(true);
+    expect(flags.noColors).toBe(true);
+  });
+});
+
+describe("Drush duration", () => {
+  it("includes duration in runDrush result", async () => {
+    const { runDrush } = await import("../src/drush");
+    const result = await runDrush("echo", ["hello"]);
+    expect(result).toHaveProperty("exitCode");
+    expect(result).toHaveProperty("duration");
+    expect(typeof result.duration).toBe("string");
+    expect(Number(result.duration)).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("Colors", () => {
+  it("setColorsEnabled toggles colors", async () => {
+    const utils = await import("../src/utils");
+    utils.setColorsEnabled(false);
+    expect(utils.colorsEnabled()).toBe(false);
+    expect(utils.green("test")).toBe("test");
+    expect(utils.red("test")).toBe("test");
+    utils.setColorsEnabled(true);
+    expect(utils.colorsEnabled()).toBe(true);
+    expect(utils.green("test")).not.toBe("test");
+  });
 });
