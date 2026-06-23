@@ -1,6 +1,6 @@
 {
   "name": "drupal-watcher",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "description": "Drupal file watcher — monitors custom modules/themes and auto-runs drush cr",
   "type": "module",
   "bin": {

@@ -1,5 +1,5 @@
 import path from "path";
-import { RED, GREEN, YELLOW, BLUE, NC, EXCLUDED_DIRS } from "./utils.js";
+import { RED, GREEN, YELLOW, BLUE, NC, CYAN, EXCLUDED_DIRS, timestamp, green, cyan, yellow, blue } from "./utils.js";
 import { getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
 
 // --- Runtime stats ---
@@ -28,15 +28,15 @@ async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
   if (files.length === 0) return;
 
   const suffix = files.length > 1 ? ` (${files.length} files)` : "";
-  console.log(`${YELLOW}🔄 Clearing cache...${suffix}${NC}`);
+  console.log(`${timestamp()} ${yellow("🔄")} Clearing cache...${suffix}`);
 
-  const { exitCode, stderr } = await runDrush(drushBase, drushArgsArray);
+  const { exitCode, stderr, duration } = await runDrush(drushBase, drushArgsArray);
 
   if (exitCode === 0) {
-    console.log(`${GREEN}✔ Cache cleared.${NC}`);
+    console.log(`${timestamp()} ${green("✔")} Cache cleared in ${duration}s`);
     stats.clears++;
   } else {
-    console.error(`${RED}✖ Drush error (exit ${exitCode}):${NC} ${stderr || "drush unavailable"}`);
+    console.error(`${timestamp()} ${red("✖")} Drush error (exit ${exitCode}): ${stderr || "drush unavailable"}`);
   }
 
   await runPostClearCommands(postClearCommands);
@@ -57,11 +57,18 @@ export function printStats() {
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
 
-  console.log(`\n${BLUE}📊 Watcher stats:${NC}`);
-  console.log(`  ${YELLOW}Uptime:${NC} ${mins}m ${secs}s`);
-  console.log(`  ${YELLOW}Changes detected:${NC} ${stats.changes}`);
-  console.log(`  ${YELLOW}Unique files:${NC} ${stats.filesChanged.size}`);
-  console.log(`  ${YELLOW}Cache clears:${NC} ${stats.clears}`);
+  console.log(`\n${blue("📊 Watcher stats:")}`);
+  console.log(`  ${yellow("Uptime:")} ${mins}m ${secs}s`);
+  console.log(`  ${yellow("Changes detected:")} ${stats.changes}`);
+  console.log(`  ${yellow("Unique files:")} ${stats.filesChanged.size}`);
+  console.log(`  ${yellow("Cache clears:")} ${stats.clears}`);
+}
+
+function formatChangePath(rootPath, changePath) {
+  const rel = path.relative(rootPath, path.resolve(rootPath, changePath));
+  if (rel === changePath) return path.basename(changePath);
+  if (rel.length < 40) return rel;
+  return `...${rel.slice(-37)}`;
 }
 
 // --- Watcher ---
@@ -89,9 +96,9 @@ export async function startWatcher(config) {
     if (config.excludePatterns?.some(p => changePath.endsWith(p))) return;
 
     if (!changeAccumulator.has(changePath)) {
-      const displayName = path.basename(changePath);
-      const total = changeAccumulator.size + 1;
-      console.log(`${GREEN}📝 ${displayName}${total > 1 ? ` (${total})` : ""}${NC}`);
+      const displayName = formatChangePath(rootPath, changePath);
+      const pending = changeAccumulator.size + 1;
+      console.log(`${timestamp()} ${green("📝")} ${displayName} ${cyan(`(${pending} pending)`)}`);
       stats.changes++;
       stats.filesChanged.add(changePath);
     }
@@ -100,7 +107,7 @@ export async function startWatcher(config) {
   }
 
   function onError(err) {
-    console.error(`${RED}✖ Watcher error:${NC} ${err?.message || err}`);
+    console.error(`${timestamp()} ${red("✖")} Watcher error: ${err?.message || err}`);
   }
 
   try {
@@ -114,6 +121,7 @@ export async function startWatcher(config) {
     });
   } catch {
     const { watch } = await import("fs");
+    console.log(`${timestamp()} ${cyan("ℹ")} Bun.watch unavailable, falling back to fs.watch`);
     watcherHandle = watch(rootPath, { recursive: true }, (eventType, filename) => {
       if (filename) onChange(filename, eventType);
     });

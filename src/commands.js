@@ -1,31 +1,27 @@
 import { existsSync } from "fs";
 import path from "path";
 import {
-  RED, GREEN, YELLOW, BLUE, CYAN, NC, ERROR, WARN, INFO, SUCCESS,
-  bold, dim, POSSIBLE_DOCROOTS,
+  RED, GREEN, YELLOW, BLUE, CYAN, NC,
+  P_ERROR, P_WARN, P_INFO, P_SUCCESS,
+  green, yellow, blue, cyan, bold, dim, red,
+  printHeader, printSection, POSSIBLE_DOCROOTS,
 } from "./utils.js";
 import {
   loadConfig, saveConfig, getDefaultConfig, detectDrupalRoot,
   writePid, removePid, checkPid,
 } from "./config.js";
 import { getDrushCommand, getDrushSpawnArgs, healthCheck } from "./drush.js";
-import { startWatcher, stopWatcher, resetDebounce, printStats, stats } from "./watcher.js";
+import { startWatcher, stopWatcher, resetDebounce, printStats } from "./watcher.js";
+import { readFileSync } from "fs";
 
-// ── Help helpers ──────────────────────────────────────────
+const BIN = "vendor/bin/drupal-watcher";
 
-function printHeader(title) {
-  console.log(`${YELLOW}${title}${NC}`);
-}
-
-function printSection(heading, items) {
-  console.log(`\n${BLUE}${heading}:${NC}`);
-  for (const item of items) {
-    const [label, desc] = Array.isArray(item) ? item : [item, ""];
-    if (desc) {
-      console.log(`  ${bold(label)}  ${desc}`);
-    } else {
-      console.log(`  ${label}`);
-    }
+function pkgVersion() {
+  try {
+    const p = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+    return p.version || "unknown";
+  } catch {
+    return "unknown";
   }
 }
 
@@ -41,83 +37,96 @@ const COMMANDS = [
 
 const GLOBAL_FLAGS = [
   ["--abort-on-drush-error", "Exit if Drush does not respond"],
-  ["--watch=<path>", "Watch only a specific route"],
-  ["--no-watch=<path>", "Exclude a specific route"],
+  ["--watch=<path>", "Watch only a specific route (substring match)"],
+  ["--no-watch=<path>", "Exclude a specific route (substring match)"],
+  ["--dry-run", "Show what would happen without starting the watcher"],
+  ["--verbose, -v", "Show full Drush output"],
+  ["--no-colors", "Disable colored output"],
+  ["--version, -V", "Show version number"],
 ];
 
 const EXAMPLES = [
-  "vendor/bin/drupal-watcher start",
-  "vendor/bin/drupal-watcher add docroot/modules/contrib",
-  "vendor/bin/drupal-watcher remove docroot/modules/contrib",
-  "vendor/bin/drupal-watcher list",
-  "vendor/bin/drupal-watcher help start",
+  `${BIN} start`,
+  `${BIN} add docroot/modules/contrib`,
+  `${BIN} remove docroot/modules/contrib`,
+  `${BIN} list`,
+  `${BIN} start --dry-run`,
+  `${BIN} help start`,
 ];
 
 // ── Help ──────────────────────────────────────────────────
 
 export function cmdHelp(command) {
+  if (command === "version" || command === "--version" || command === "-V") {
+    console.log(`drupal-watcher v${pkgVersion()}`);
+    return;
+  }
+
   if (command === "start") {
-    printHeader("🚀 drupal-watcher start");
+    printHeader("drupal-watcher start");
     console.log("  Start the watcher to monitor Drupal file changes.");
     printSection("Flags", [
       ["--abort-on-drush-error", "Exit if Drush does not respond"],
-      ["--watch=<path>", "Watch only a specific route"],
-      ["--no-watch=<path>", "Exclude a specific route"],
+      ["--watch=<path>", "Watch only a specific route (substring match)"],
+      ["--no-watch=<path>", "Exclude a specific route (substring match)"],
+      ["--dry-run", "Show what would happen without starting"],
+      ["--verbose, -v", "Show full Drush output"],
     ]);
     printSection("Examples", [
-      "vendor/bin/drupal-watcher start",
-      "vendor/bin/drupal-watcher start --abort-on-drush-error",
-      "vendor/bin/drupal-watcher start --watch modules/my-module",
+      `${BIN} start`,
+      `${BIN} start --abort-on-drush-error`,
+      `${BIN} start --watch modules/my-module`,
+      `${BIN} start --dry-run`,
     ]);
     return;
   }
 
   if (command === "add") {
-    printHeader("🚀 drupal-watcher add");
+    printHeader("drupal-watcher add");
     console.log("  Add a route for the watcher to monitor.");
-    printSection("Usage", [`vendor/bin/drupal-watcher add ${dim("<path>")}`]);
+    printSection("Usage", [`${BIN} add ${dim("<path>")}`]);
     printSection("Examples", [
-      "vendor/bin/drupal-watcher add modules/contrib",
-      "vendor/bin/drupal-watcher add docroot/themes/custom/my-theme",
+      `${BIN} add modules/contrib`,
+      `${BIN} add docroot/themes/custom/my-theme`,
     ]);
     return;
   }
 
   if (command === "remove") {
-    printHeader("🚀 drupal-watcher remove");
+    printHeader("drupal-watcher remove");
     console.log("  Remove a route from the watch list.");
-    printSection("Usage", [`vendor/bin/drupal-watcher remove ${dim("<path>")}`]);
-    printSection("Examples", ["vendor/bin/drupal-watcher remove modules/contrib"]);
+    printSection("Usage", [`${BIN} remove ${dim("<path>")}`]);
+    printSection("Examples", [`${BIN} remove modules/contrib`]);
     return;
   }
 
   if (command === "list") {
-    printHeader("🚀 drupal-watcher list");
+    printHeader("drupal-watcher list");
     console.log("  Display the current watcher configuration.");
     return;
   }
 
   if (command === "reset") {
-    printHeader("🚀 drupal-watcher reset");
+    printHeader("drupal-watcher reset");
     console.log("  Reset routes to default values.");
     return;
   }
 
   if (command === "status") {
-    printHeader("🚀 drupal-watcher status");
+    printHeader("drupal-watcher status");
     console.log("  Show whether the watcher is running and its PID.");
     return;
   }
 
   // General help
-  console.log(`${YELLOW}🚀 Drupal Watcher${NC} — Watch Drupal files and auto-run drush cr`);
+  console.log(`${yellow("Drupal Watcher")} — Watch Drupal files and auto-run drush cr`);
   console.log();
-  printSection("Usage", [`vendor/bin/drupal-watcher ${bold("<command>")} ${dim("[arguments]")}`]);
+  printSection("Usage", [`${BIN} ${green("<command>")} ${dim("[arguments]")}`]);
   printSection("Commands", COMMANDS);
   printSection("Global flags", GLOBAL_FLAGS);
   printSection("Examples", EXAMPLES);
-  console.log(`\n${BLUE}Config:${NC} watcher.config.json`);
-  console.log(`${BLUE}Docs:${NC} README.md`);
+  console.log(`\n${blue("Config:")} watcher.config.json`);
+  console.log(`${blue("Docs:")} README.md`);
 }
 
 // ── List ──────────────────────────────────────────────────
@@ -127,18 +136,18 @@ export async function cmdList() {
   const drushSpawn = getDrushSpawnArgs(config);
   const drupalRoot = config.drupalRoot || detectDrupalRoot() || "not detected";
 
-  printHeader("📋 Watcher configuration");
-  console.log(`  ${YELLOW}Drupal root:${NC} ${drupalRoot}`);
-  console.log(`  ${YELLOW}Watched routes:${NC}`);
+  printHeader("Watcher configuration");
+  console.log(`  ${yellow("Drupal root:")} ${drupalRoot}`);
+  console.log(`  ${yellow("Watched routes:")}`);
   config.routes.forEach(r => console.log(`    - ${r}`));
-  console.log(`  ${YELLOW}Patterns:${NC} ${config.patterns.join(", ")}`);
+  console.log(`  ${yellow("Patterns:")} ${config.patterns.join(", ")}`);
   if (config.excludePatterns?.length > 0) {
-    console.log(`  ${YELLOW}Excluded:${NC} ${config.excludePatterns.join(", ")}`);
+    console.log(`  ${yellow("Excluded:")} ${config.excludePatterns.join(", ")}`);
   }
-  console.log(`  ${YELLOW}Debounce:${NC} ${config.debounce}ms`);
-  console.log(`  ${YELLOW}Drush:${NC} ${drushSpawn.cmd} ${drushSpawn.args.join(" ")}`);
+  console.log(`  ${yellow("Debounce:")} ${config.debounce}ms`);
+  console.log(`  ${yellow("Drush:")} ${drushSpawn.cmd} ${drushSpawn.args.join(" ")}`);
   if (config.postClearCommands?.length > 0) {
-    console.log(`  ${YELLOW}Post-clear:${NC} ${config.postClearCommands.join("; ")}`);
+    console.log(`  ${yellow("Post-clear:")} ${config.postClearCommands.join("; ")}`);
   }
 }
 
@@ -148,18 +157,18 @@ export async function cmdStatus() {
   const pid = await checkPid();
 
   if (pid === null) {
-    console.log(`${WARN} Watcher is not running.`);
-    console.log(`   Run ${bold("vendor/bin/drupal-watcher start")} to start it.`);
+    console.log(`${P_WARN} Watcher is not running.`);
+    console.log(`   Run ${green(`${BIN} start`)} to start it.`);
   } else if (pid === "stale") {
-    console.log(`${WARN} Stale PID file. Watcher is not running.`);
-    console.log(`   Run ${bold("vendor/bin/drupal-watcher start")} to start it.`);
+    console.log(`${P_WARN} Stale PID file. Watcher is not running.`);
+    console.log(`   Run ${green(`${BIN} start`)} to start it.`);
     await removePid();
   } else {
     const result = Bun.spawnSync(["ps", "-p", pid, "-o", "etime="]);
     const elapsed = result.stdout.toString().trim();
-    console.log(`${SUCCESS} Watcher is active`);
-    console.log(`  ${YELLOW}PID:${NC} ${pid}`);
-    if (elapsed) console.log(`  ${YELLOW}Uptime:${NC} ${elapsed}`);
+    console.log(`${P_SUCCESS} Watcher is active`);
+    console.log(`  ${yellow("PID:")} ${pid}`);
+    if (elapsed) console.log(`  ${yellow("Uptime:")} ${elapsed}`);
   }
 }
 
@@ -167,10 +176,10 @@ export async function cmdStatus() {
 
 export async function cmdAdd(newRoute) {
   if (!newRoute) {
-    console.error(`${ERROR} Specify a path to add.`);
-    console.log(`   ${YELLOW}Examples:${NC}`);
-    console.log(`     vendor/bin/drupal-watcher add modules/contrib`);
-    console.log(`     vendor/bin/drupal-watcher add docroot/themes/custom/my-theme`);
+    console.error(`${P_ERROR} Specify a path to add.`);
+    console.log(`   ${yellow("Examples:")}`);
+    console.log(`     ${BIN} add modules/contrib`);
+    console.log(`     ${BIN} add docroot/themes/custom/my-theme`);
     process.exit(1);
   }
 
@@ -178,32 +187,33 @@ export async function cmdAdd(newRoute) {
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
 
   if (!drupalRoot) {
-    console.error(`${ERROR} Could not detect Drupal root directory.`);
-    console.log(`   ${YELLOW}Supported structures:${NC} ${POSSIBLE_DOCROOTS.join(", ")}`);
+    console.error(`${P_ERROR} Could not detect Drupal root directory.`);
+    console.log(`   ${yellow("Supported structures:")} ${POSSIBLE_DOCROOTS.join(", ")}`);
     process.exit(1);
   }
 
   let normalized = path.normalize(newRoute).replace(/^\.\//, "");
   if (!normalized.startsWith(drupalRoot) && !POSSIBLE_DOCROOTS.some(r => normalized.startsWith(r))) {
     normalized = path.join(drupalRoot, normalized);
-    console.log(`${INFO} Normalized path: ${normalized}`);
+    console.log(`${P_INFO} Normalized path: ${cyan(normalized)}`);
   }
 
   if (config.routes.includes(normalized)) {
-    console.log(`${WARN} Path is already in the list.`);
-    printSection("Current routes", config.routes.map(r => `  - ${r}`));
+    console.log(`${P_WARN} Path is already in the list.`);
+    console.log(`   ${yellow("Current routes:")}`);
+    config.routes.forEach(r => console.log(`     - ${r}`));
     return;
   }
 
   if (!existsSync(path.join(process.cwd(), normalized))) {
-    console.error(`${ERROR} Path does not exist: ${normalized}`);
-    console.log(`   ${YELLOW}Verify the folder exists at:${NC} ${process.cwd()}/${normalized}`);
+    console.error(`${P_ERROR} Path does not exist: ${cyan(normalized)}`);
+    console.log(`   ${yellow("Verify the folder exists at:")} ${process.cwd()}/${normalized}`);
     process.exit(1);
   }
 
   config.routes.push(normalized);
   await saveConfig(config);
-  console.log(`${SUCCESS} Path added: ${normalized}`);
+  console.log(`${P_SUCCESS} Path added: ${cyan(normalized)}`);
   await cmdList();
 }
 
@@ -211,9 +221,9 @@ export async function cmdAdd(newRoute) {
 
 export async function cmdRemove(routeToRemove) {
   if (!routeToRemove) {
-    console.error(`${ERROR} Specify a path to remove.`);
-    console.log(`   ${YELLOW}Examples:${NC}`);
-    console.log(`     vendor/bin/drupal-watcher remove modules/contrib`);
+    console.error(`${P_ERROR} Specify a path to remove.`);
+    console.log(`   ${yellow("Examples:")}`);
+    console.log(`     ${BIN} remove modules/contrib`);
     process.exit(1);
   }
 
@@ -222,15 +232,16 @@ export async function cmdRemove(routeToRemove) {
   const index = config.routes.indexOf(normalized);
 
   if (index === -1) {
-    console.error(`${ERROR} Path is not in the list.`);
-    printSection("Current routes", config.routes.map(r => `  - ${r}`));
-    console.log(`   ${YELLOW}To add a path:${NC} vendor/bin/drupal-watcher add <path>`);
+    console.error(`${P_ERROR} Path is not in the list.`);
+    console.log(`   ${yellow("Current routes:")}`);
+    config.routes.forEach(r => console.log(`     - ${r}`));
+    console.log(`   ${yellow("To add a path:")} ${BIN} add <path>`);
     process.exit(1);
   }
 
   config.routes.splice(index, 1);
   await saveConfig(config);
-  console.log(`${SUCCESS} Path removed: ${normalized}`);
+  console.log(`${P_SUCCESS} Path removed: ${cyan(normalized)}`);
   await cmdList();
 }
 
@@ -240,58 +251,85 @@ export async function cmdReset() {
   const root = process.cwd();
   const config = await loadConfig(root);
   const def = getDefaultConfig(root);
+
+  if (config.routes.length > 0) {
+    console.log(`${P_WARN} This will reset routes to defaults:`);
+    console.log(`   ${yellow("Current:")} ${config.routes.join(", ")}`);
+    console.log(`   ${yellow("Default:")} ${def.routes.join(", ")}`);
+    const { confirm } = await ask(` ${P_WARN} Continue? [y/N] `);
+    if (!confirm) {
+      console.log("  Cancelled.");
+      return;
+    }
+  }
+
   config.routes = [...def.routes];
   config.drupalRoot = def.drupalRoot;
   await saveConfig(config, root);
-  console.log(`${SUCCESS} Routes reset to defaults.`);
+  console.log(`${P_SUCCESS} Routes reset to defaults.`);
   await cmdList();
+}
+
+async function ask(prompt) {
+  const buf = new Uint8Array(1024);
+  await Bun.write(Bun.stdout, Buffer.from(prompt));
+  const n = await Bun.stdin.read(buf);
+  const answer = new TextDecoder().decode(buf.subarray(0, n)).trim().toLowerCase();
+  return { confirm: answer === "y" || answer === "yes" };
 }
 
 // ── Start ─────────────────────────────────────────────────
 
 export async function cmdStart(flags = {}) {
-  const { abortOnDrushError = false, watchRoutes = [], noWatchRoutes = [] } = flags;
+  const { abortOnDrushError = false, watchRoutes = [], noWatchRoutes = [], dryRun = false, verbose = false } = flags;
 
-  console.log(`${YELLOW}🚀 Starting Drupal Watcher${NC}`);
+  if (dryRun) console.log(`${cyan("🏁")} Dry run mode — no watcher will be started\n`);
+
+  console.log(`${yellow("🚀 Starting Drupal Watcher")}`);
 
   const existingPid = await checkPid();
   if (existingPid && existingPid !== "stale") {
-    console.error(`${ERROR} Watcher is already running (PID: ${existingPid}).`);
-    console.log(`   Run ${bold("vendor/bin/drupal-watcher status")} for details.`);
+    console.error(`${P_ERROR} Watcher is already running (PID: ${existingPid}).`);
+    console.log(`   Run ${green(`${BIN} status`)} for details.`);
     process.exit(1);
   }
 
   const config = await loadConfig();
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
+  const drushPath = getDrushCommand(config);
 
   if (!drupalRoot) {
-    console.error(`${ERROR} Could not detect Drupal root directory.`);
-    console.error(`${YELLOW}   Supported structures: ${POSSIBLE_DOCROOTS.join(", ")}${NC}`);
+    console.error(`${P_ERROR} Could not detect Drupal root directory.`);
+    console.error(`   ${yellow("Supported structures:")} ${POSSIBLE_DOCROOTS.join(", ")}`);
     process.exit(1);
   }
 
   const { cmd: drushBase, args: drushArgs } = getDrushSpawnArgs(config);
   const drushCmdStr = getDrushCommand(config);
 
-  console.log(`${GREEN}📁 Drupal root:${NC} ${drupalRoot}`);
-  console.log(`${GREEN}🔧 Drush:${NC} ${drushCmdStr} ${config.drushCommand}`);
+  console.log(`  ${green("Drupal root:")} ${drupalRoot}`);
+  console.log(`  ${green("Drush:")} ${cyan(drushPath)} ${config.drushCommand}`);
 
-  const drushOk = await healthCheck(config);
-  if (!drushOk) {
-    if (abortOnDrushError) {
-      console.error(`${ERROR} Drush is not responding. Aborting.`);
-      process.exit(1);
+  if (!dryRun) {
+    const drushOk = await healthCheck(config);
+    if (!drushOk) {
+      if (abortOnDrushError) {
+        console.error(`${P_ERROR} Drush is not responding. Aborting.`);
+        process.exit(1);
+      }
+      console.log(`  ${P_WARN} Drush is not responding. Watcher will start anyway.`);
+    } else {
+      console.log(`  ${P_SUCCESS} Drush is responding.`);
     }
-    console.log(`${WARN} Drush is not responding. Watcher will start anyway.`);
   } else {
-    console.log(`${SUCCESS} Drush is responding.`);
+    console.log(`  ${P_INFO} Skipping health check (dry run).`);
   }
 
   let routes = [...config.routes];
   if (watchRoutes.length > 0) {
     routes = routes.filter(r => watchRoutes.some(w => r.includes(w)));
     if (routes.length === 0) {
-      console.error(`${ERROR} No routes match the --watch filter.`);
+      console.error(`${P_ERROR} No routes match the --watch filter.`);
       process.exit(1);
     }
   }
@@ -299,35 +337,43 @@ export async function cmdStart(flags = {}) {
     routes = routes.filter(r => !noWatchRoutes.some(n => r.includes(n)));
   }
 
-  console.log(`${GREEN}👀 Watching routes:${NC}`);
+  console.log(`  ${green("Watching routes:")}`);
   let hasValidRoute = false;
   routes.forEach(route => {
     if (!existsSync(path.join(process.cwd(), route))) {
-      console.log(`${WARN} Path does not exist (skipping):${NC} ${route}`);
+      console.log(`    ${P_WARN} Path does not exist (skipping): ${route}`);
       return;
     }
     hasValidRoute = true;
-    console.log(`  - ${route}`);
+    console.log(`    - ${route}`);
   });
 
   if (!hasValidRoute) {
-    console.error(`${ERROR} None of the configured routes exist.`);
-    console.error(`${YELLOW}   Add routes with 'vendor/bin/drupal-watcher add'${NC}`);
+    console.error(`${P_ERROR} None of the configured routes exist.`);
+    console.error(`   ${yellow(`Add routes with '${BIN} add'`)}`);
     process.exit(1);
+  }
+
+  if (dryRun) {
+    console.log(`\n${cyan("🏁")} Dry run complete. Pass no flags to start the watcher.`);
+    return;
   }
 
   await writePid();
   config.routes = routes;
   await startWatcher(config);
 
-  console.log(`${SUCCESS} Watcher active. Waiting for changes... (Ctrl+C to stop)`);
+  console.log(`\n${P_SUCCESS} Watcher active. Waiting for changes... (Ctrl+C to stop)`);
 
-  process.on("SIGINT", async () => {
-    console.log(`\n${YELLOW}🛑 Stopping watcher...${NC}`);
+  function shutdown(signal) {
+    console.log(`\n${yellow("🛑")} Stopping watcher (${signal})...`);
     resetDebounce();
     stopWatcher();
-    await removePid();
+    removePid();
     printStats();
     process.exit(0);
-  });
+  }
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
