@@ -77,25 +77,25 @@ export async function loadConfig(root) {
 
   try {
     const raw = await file.text();
-    const config = JSON.parse(raw);
+    const parsed = JSON.parse(raw);
 
-    if (!config.drupalRoot) {
+    if (!parsed.drupalRoot) {
       const detected = detectDrupalRoot(r);
       if (detected) {
-        config.drupalRoot = detected;
-        config.routes = config.routes.map(route => {
+        parsed.drupalRoot = detected;
+        parsed.routes = parsed.routes.map(route => {
           const parts = route.split("/");
           if (parts.length > 0 && POSSIBLE_DOCROOTS.includes(parts[0]) && parts[0] !== detected) {
             return route.replace(parts[0], detected);
           }
           return route;
         });
-        await saveConfig(config, r);
+        await saveConfig(parsed, r);
       }
     }
 
     const entry = _rootCache.get(r) || {};
-    entry.config = { ...getDefaultConfig(r), ...config };
+    entry.config = validateConfig({ ...getDefaultConfig(r), ...parsed }, r);
     _rootCache.set(r, entry);
     return entry.config;
   } catch {
@@ -106,6 +106,20 @@ export async function loadConfig(root) {
     _rootCache.set(r, entry);
     return entry.config;
   }
+}
+
+export function validateConfig(config, root) {
+  const defaults = getDefaultConfig(root);
+  if (!Array.isArray(config.routes)) config.routes = defaults.routes;
+  if (!Array.isArray(config.patterns)) config.patterns = defaults.patterns;
+  if (!Array.isArray(config.excludePatterns)) config.excludePatterns = defaults.excludePatterns;
+  if (typeof config.debounce !== "number" || config.debounce <= 0) config.debounce = defaults.debounce;
+  if (typeof config.drushCmd !== "string" && config.drushCmd !== null) config.drushCmd = defaults.drushCmd;
+  if (typeof config.drushCommand !== "string") config.drushCommand = defaults.drushCommand;
+  if (!Array.isArray(config.drushArgs)) config.drushArgs = defaults.drushArgs;
+  if (!Array.isArray(config.postClearCommands)) config.postClearCommands = defaults.postClearCommands;
+  if (typeof config.drupalRoot !== "string") config.drupalRoot = defaults.drupalRoot;
+  return config;
 }
 
 export async function saveConfig(config, root) {
@@ -137,8 +151,12 @@ export async function checkPid(root) {
   if (!(await file.exists())) return null;
   const pid = (await file.text()).trim();
   if (!pid) return null;
-  const result = Bun.spawnSync(["ps", "-p", pid, "-o", "pid="]);
-  return result.exitCode === 0 ? pid : "stale";
+  try {
+    process.kill(parseInt(pid, 10), 0);
+    return pid;
+  } catch {
+    return "stale";
+  }
 }
 
 export function invalidateConfigCache(root) {

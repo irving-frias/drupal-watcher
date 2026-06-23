@@ -1,4 +1,4 @@
-import { RED, YELLOW, NC, P_ERROR, P_WARN, yellow, setColorsEnabled } from "./utils.js";
+import { P_ERROR, P_WARN, yellow, setColorsEnabled } from "./utils.js";
 import { cmdStart, cmdList, cmdStatus, cmdAdd, cmdRemove, cmdReset, cmdHelp } from "./commands.js";
 
 const BIN = "vendor/bin/drupal-watcher";

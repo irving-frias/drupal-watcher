@@ -1,5 +1,3 @@
-import { existsSync } from "fs";
-
 // ANSI color codes
 export const RED = "\x1b[31m";
 export const GREEN = "\x1b[32m";
@@ -70,10 +68,4 @@ export function printSection(heading, items) {
   }
 }
 
-export function pathExists(p) {
-  try {
-    return existsSync(p);
-  } catch {
-    return false;
-  }
-}
+

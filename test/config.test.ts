@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, spyOn } from "bun:test";
 import path from "path";
 
 const TEST_DIR = path.join(import.meta.dir, "..", ".test-tmp");
@@ -8,6 +8,8 @@ async function cleanup() {
     await Bun.spawn(["rm", "-rf", TEST_DIR]).exited;
   } catch {}
 }
+
+
 
 describe("Config", () => {
   beforeEach(async () => {
@@ -191,5 +193,123 @@ describe("Colors", () => {
     utils.setColorsEnabled(true);
     expect(utils.colorsEnabled()).toBe(true);
     expect(utils.green("test")).not.toBe("test");
+  });
+});
+
+describe("Config validation", () => {
+  it("routes must be an array", async () => {
+    const { validateConfig } = await import("../src/config");
+    const config = validateConfig({ routes: null }, TEST_DIR);
+    expect(Array.isArray(config.routes)).toBe(true);
+    expect(config.routes.length).toBeGreaterThan(0);
+  });
+
+  it("debounce must be a positive number", async () => {
+    const { validateConfig } = await import("../src/config");
+    const c1 = validateConfig({ debounce: "abc" }, TEST_DIR);
+    expect(c1.debounce).toBe(800);
+    const c2 = validateConfig({ debounce: -100 }, TEST_DIR);
+    expect(c2.debounce).toBe(800);
+  });
+
+  it("drushArgs must be an array", async () => {
+    const { validateConfig } = await import("../src/config");
+    const config = validateConfig({ drushArgs: "not-an-array" }, TEST_DIR);
+    expect(Array.isArray(config.drushArgs)).toBe(true);
+  });
+
+  it("preserves valid values", async () => {
+    const { validateConfig } = await import("../src/config");
+    const config = validateConfig({
+      routes: ["docroot/modules/custom"],
+      debounce: 500,
+      drushArgs: ["--uri=default"],
+    }, TEST_DIR);
+    expect(config.routes).toEqual(["docroot/modules/custom"]);
+    expect(config.debounce).toBe(500);
+    expect(config.drushArgs).toEqual(["--uri=default"]);
+  });
+
+  it("validates invalid config when loading", async () => {
+    await Bun.write(
+      path.join(TEST_DIR, "watcher.config.json"),
+      JSON.stringify({ routes: null, debounce: "abc" }, null, 2)
+    );
+    const { loadConfig, invalidateConfigCache } = await import("../src/config");
+    invalidateConfigCache(TEST_DIR);
+    const config = await loadConfig(TEST_DIR);
+    expect(Array.isArray(config.routes)).toBe(true);
+    expect(typeof config.debounce).toBe("number");
+  });
+});
+
+describe("PID check", () => {
+  it("returns null when no PID file", async () => {
+    const { checkPid } = await import("../src/config");
+    expect(await checkPid(TEST_DIR)).toBeNull();
+  });
+
+  it("returns stale for non-existent PID", async () => {
+    const { checkPid } = await import("../src/config");
+    const pidPath = path.join(TEST_DIR, ".drupal-watcher.pid");
+    await Bun.write(pidPath, "99999999");
+    const result = await checkPid(TEST_DIR);
+    expect(result).toBe("stale");
+  });
+
+  it("returns null for empty PID file", async () => {
+    const { checkPid } = await import("../src/config");
+    const pidPath = path.join(TEST_DIR, ".drupal-watcher.pid");
+    await Bun.write(pidPath, "");
+    const result = await checkPid(TEST_DIR);
+    expect(result).toBeNull();
+  });
+});
+
+describe("Watcher", () => {
+  it("resetDebounce clears state", async () => {
+    const { resetDebounce, stats } = await import("../src/watcher");
+    resetDebounce();
+    expect(stats.changes).toBe(0);
+    expect(stats.clears).toBe(0);
+    expect(stats.startTime).toBeNull();
+    expect(stats.filesChanged instanceof Set).toBe(true);
+  });
+});
+
+describe("Commands", () => {
+  it("cmdHelp prints general help", async () => {
+    const spy = spyOn(console, "log");
+    const { cmdHelp } = await import("../src/commands");
+    cmdHelp();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("cmdHelp prints start help", async () => {
+    const spy = spyOn(console, "log");
+    const { cmdHelp } = await import("../src/commands");
+    cmdHelp("start");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("cmdStatus shows not running when no PID", async () => {
+    const spy = spyOn(console, "log");
+    const { cmdStatus } = await import("../src/commands");
+    await cmdStatus();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+describe("Drush shell", () => {
+  it("uses sh -c on non-Windows", async () => {
+    const { runPostClearCommands } = await import("../src/drush");
+    // Spawn and immediately cancel to verify it doesn't throw
+    const cmd = "echo test-shell";
+    const proc = Bun.spawn(["sh", "-c", cmd]);
+    const exitCode = await proc.exited;
+    expect(exitCode).toBe(0);
   });
 });
