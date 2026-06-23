@@ -24,12 +24,15 @@ export function resetDebounce() {
 
 function getCacheClearArgs(config, files) {
   const commandsPerPattern = config.commandsPerPattern || {};
+  // Sort longest-first so ".services.yml" beats ".yml"
+  const patternEntries = Object.entries(commandsPerPattern).sort((a, b) => b[0].length - a[0].length);
   const matchedCommands = new Set();
 
   for (const file of files) {
-    for (const [pattern, command] of Object.entries(commandsPerPattern)) {
+    for (const [pattern, command] of patternEntries) {
       if (file.endsWith(pattern)) {
         matchedCommands.add(command);
+        break;
       }
     }
   }

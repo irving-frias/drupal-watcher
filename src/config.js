@@ -64,7 +64,16 @@ export function getDefaultConfig(root) {
     drushCommand: "cr",
     drushArgs: [],
     postClearCommands: [],
-    commandsPerPattern: {},
+    commandsPerPattern: {
+      ".html.twig": "cc twig",
+      ".theme": "cc theme-registry",
+      ".module": "cc plugin",
+      ".inc": "cc plugin",
+      ".yml": "cc plugin",
+      ".info.yml": "cr",
+      ".services.yml": "cr",
+      ".php": "cr",
+    },
     drupalRoot,
   };
 }
@@ -129,7 +138,11 @@ export function validateConfig(config, root) {
   if (typeof config.drushCommand !== "string") config.drushCommand = defaults.drushCommand;
   if (!Array.isArray(config.drushArgs)) config.drushArgs = defaults.drushArgs;
   if (!Array.isArray(config.postClearCommands)) config.postClearCommands = defaults.postClearCommands;
-  if (typeof config.commandsPerPattern !== "object" || Array.isArray(config.commandsPerPattern)) config.commandsPerPattern = defaults.commandsPerPattern;
+  if (typeof config.commandsPerPattern === "object" && !Array.isArray(config.commandsPerPattern)) {
+    config.commandsPerPattern = { ...defaults.commandsPerPattern, ...config.commandsPerPattern };
+  } else {
+    config.commandsPerPattern = defaults.commandsPerPattern;
+  }
   if (typeof config.drupalRoot !== "string") config.drupalRoot = defaults.drupalRoot;
   config.routes = config.routes.map(r => path.normalize(r).replace(/\/+$/, ""));
   return config;

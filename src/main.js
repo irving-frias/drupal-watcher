@@ -17,6 +17,7 @@ export function parseFlags(argv) {
     debounce: null,
     noDotfiles: false,
     logFile: null,
+    commandsPerPattern: {},
   };
   const extra = [];
 
@@ -49,6 +50,14 @@ export function parseFlags(argv) {
       }
     } else if (arg === "--no-dotfiles") {
       flags.noDotfiles = true;
+    } else if (arg.startsWith("--commands-per-pattern=")) {
+      const kv = arg.slice(22);
+      const eqIdx = kv.indexOf("=");
+      if (eqIdx === -1) {
+        console.error(`${P_ERROR} ${yellow("--commands-per-pattern")} requires pattern=command. Use ${yellow("--commands-per-pattern=.html.twig=cc\\ twig")}.`);
+        process.exit(1);
+      }
+      flags.commandsPerPattern[kv.slice(0, eqIdx)] = kv.slice(eqIdx + 1);
     } else if (arg.startsWith("--log-file=")) {
       flags.logFile = arg.slice(11);
     } else if (arg.startsWith("--config=")) {
