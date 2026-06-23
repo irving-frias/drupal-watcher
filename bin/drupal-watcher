@@ -1,0 +1,236 @@
+#!/usr/bin/env bun
+
+import { watch, existsSync, accessSync, constants, readFileSync, writeFileSync } from 'fs';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import path from 'path';
+
+const execAsync = promisify(exec);
+
+// Colores
+const RED = '\x1b[31m';
+const GREEN = '\x1b[32m';
+const YELLOW = '\x1b[33m';
+const BLUE = '\x1b[34m';
+const NC = '\x1b[0m';
+
+// Archivo de configuración
+const CONFIG_FILE = path.join(process.cwd(), 'watcher.config.json');
+
+// Configuración por defecto
+const DEFAULT_CONFIG = {
+  routes: [
+    'docroot/modules/custom',
+    'docroot/themes/custom'
+  ],
+  patterns: ['.html.twig', '.inc', '.yml'],
+  debounce: 800, // milisegundos
+  drushCmd: null // se detecta automáticamente si es null
+};
+
+// --- Utilidades de configuración ---
+function loadConfig() {
+  if (!existsSync(CONFIG_FILE)) {
+    // Crear archivo con config por defecto
+    writeFileSync(CONFIG_FILE, JSON.stringify(DEFAULT_CONFIG, null, 2));
+    return { ...DEFAULT_CONFIG };
+  }
+  try {
+    const raw = readFileSync(CONFIG_FILE, 'utf-8');
+    const config = JSON.parse(raw);
+    // Fusionar con defaults en caso de que falten campos
+    return { ...DEFAULT_CONFIG, ...config };
+  } catch {
+    console.error(`${RED}Error al leer el archivo de configuración. Usando defaults.${NC}`);
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+function saveConfig(config) {
+  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+// --- Detección de entorno ---
+function detectEnvironment() {
+  const root = process.cwd();
+  if (existsSync(path.join(root, '.ddev'))) return 'ddev';
+  if (existsSync(path.join(root, '.lando.yml')) || existsSync(path.join(root, '.lando'))) return 'lando';
+  return 'local';
+}
+
+function getDrushCommand(config) {
+  if (config.drushCmd) return config.drushCmd;
+  const env = detectEnvironment();
+  if (env === 'ddev') return 'ddev drush';
+  if (env === 'lando') return 'lando drush';
+  // Buscar en vendor/bin o bin
+  const vendorDrush = path.join(process.cwd(), 'vendor/bin/drush');
+  const binDrush = path.join(process.cwd(), 'bin/drush');
+  if (existsSync(vendorDrush)) {
+    try { accessSync(vendorDrush, constants.X_OK); return vendorDrush; } catch {}
+  }
+  if (existsSync(binDrush)) {
+    try { accessSync(binDrush, constants.X_OK); return binDrush; } catch {}
+  }
+  return 'drush'; // fallback
+}
+
+// --- Comando: list (mostrar configuración actual) ---
+function cmdList() {
+  const config = loadConfig();
+  const drushCmd = getDrushCommand(config);
+  console.log(`${BLUE}📋 Configuración actual del watcher:${NC}`);
+  console.log(`  ${YELLOW}Rutas vigiladas:${NC}`);
+  config.routes.forEach(r => console.log(`    - ${r}`));
+  console.log(`  ${YELLOW}Patrones de archivo:${NC} ${config.patterns.join(', ')}`);
+  console.log(`  ${YELLOW}Debounce:${NC} ${config.debounce}ms`);
+  console.log(`  ${YELLOW}Comando Drush:${NC} ${drushCmd}`);
+}
+
+// --- Comando: add (añadir una nueva ruta) ---
+function cmdAdd(newRoute) {
+  if (!newRoute) {
+    console.error(`${RED}❌ Debes especificar una ruta. Ejemplo: composer watcher:add docroot/modules/contrib${NC}`);
+    process.exit(1);
+  }
+  const config = loadConfig();
+  // Normalizar ruta (eliminar barras al inicio/fin)
+  const normalized = path.normalize(newRoute).replace(/^\.\//, '');
+  if (config.routes.includes(normalized)) {
+    console.log(`${YELLOW}⚠️ La ruta ya está en la lista.${NC}`);
+    return;
+  }
+  // Verificar que existe
+  const fullPath = path.join(process.cwd(), normalized);
+  if (!existsSync(fullPath)) {
+    console.error(`${RED}❌ La ruta no existe: ${normalized}${NC}`);
+    process.exit(1);
+  }
+  config.routes.push(normalized);
+  saveConfig(config);
+  console.log(`${GREEN}✅ Ruta añadida: ${normalized}${NC}`);
+  cmdList();
+}
+
+// --- Comando: remove (eliminar una ruta) ---
+function cmdRemove(routeToRemove) {
+  if (!routeToRemove) {
+    console.error(`${RED}❌ Debes especificar una ruta. Ejemplo: composer watcher:remove docroot/modules/contrib${NC}`);
+    process.exit(1);
+  }
+  const config = loadConfig();
+  const normalized = path.normalize(routeToRemove).replace(/^\.\//, '');
+  const index = config.routes.indexOf(normalized);
+  if (index === -1) {
+    console.error(`${RED}❌ La ruta no está en la lista.${NC}`);
+    cmdList();
+    process.exit(1);
+  }
+  config.routes.splice(index, 1);
+  saveConfig(config);
+  console.log(`${GREEN}✅ Ruta eliminada: ${normalized}${NC}`);
+  cmdList();
+}
+
+// --- Comando: reset (restablecer rutas por defecto) ---
+function cmdReset() {
+  const config = loadConfig();
+  config.routes = [...DEFAULT_CONFIG.routes];
+  saveConfig(config);
+  console.log(`${GREEN}✅ Rutas restablecidas a los valores por defecto.${NC}`);
+  cmdList();
+}
+
+// --- Función para limpiar caché con debounce ---
+let timeoutId = null;
+
+async function clearCache(drushCmd, debounce) {
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+    timeoutId = null;
+  }
+
+  timeoutId = setTimeout(async () => {
+    try {
+      console.log(`${YELLOW}🔄 Limpiando caché...${NC}`);
+      const { stderr } = await execAsync(`"${drushCmd}" cr`);
+      if (stderr) {
+        console.error(`${RED}⚠️ Drush advierte:${NC}`, stderr);
+      } else {
+        console.log(`${GREEN}✅ Caché limpiada correctamente.${NC}`);
+      }
+    } catch (error) {
+      console.error(`${RED}❌ Error al ejecutar drush:${NC}`, error.message);
+    }
+    timeoutId = null;
+  }, debounce || 800);
+}
+
+// --- Comando: start (iniciar el watcher) ---
+function cmdStart() {
+  console.log(`${YELLOW}🚀 Iniciando Drupal Watcher (Bun + Composer)${NC}`);
+  const config = loadConfig();
+  const drushCmd = getDrushCommand(config);
+  console.log(`${GREEN}🔧 Usando comando:${NC} ${drushCmd}`);
+  console.log(`${GREEN}👀 Vigilando rutas:${NC}`);
+
+  // Validar que al menos una ruta existe
+  let hasValidRoute = false;
+  config.routes.forEach(route => {
+    const fullPath = path.join(process.cwd(), route);
+    if (!existsSync(fullPath)) {
+      console.log(`${YELLOW}⚠️ Ruta no existe (se omite):${NC} ${route}`);
+      return;
+    }
+    hasValidRoute = true;
+    console.log(`  - ${route}`);
+    // Iniciar watcher en esta ruta
+    watch(fullPath, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      const shouldProcess = config.patterns.some(pattern => filename.endsWith(pattern));
+      if (!shouldProcess) return;
+      console.log(`${GREEN}📝 Cambio detectado:${NC} ${path.basename(filename)}`);
+      clearCache(drushCmd, config.debounce);
+    });
+  });
+
+  if (!hasValidRoute) {
+    console.error(`${RED}❌ Ninguna de las rutas configuradas existe. Por favor, añade rutas válidas con 'composer watcher:add'.${NC}`);
+    process.exit(1);
+  }
+
+  console.log(`${GREEN}✅ Watcher activo. Esperando cambios... (Ctrl+C para salir)${NC}`);
+
+  // Manejar salida limpia
+  process.on('SIGINT', () => {
+    console.log(`\n${YELLOW}🛑 Deteniendo watcher...${NC}`);
+    process.exit(0);
+  });
+}
+
+// --- Main: despachar comandos ---
+function main() {
+  const args = process.argv.slice(2);
+  const command = args[0] || 'start';
+
+  switch (command) {
+    case 'list':
+      cmdList();
+      break;
+    case 'add':
+      cmdAdd(args[1]);
+      break;
+    case 'remove':
+      cmdRemove(args[1]);
+      break;
+    case 'reset':
+      cmdReset();
+      break;
+    case 'start':
+    default:
+      cmdStart();
+      break;
+  }
+}
+
+main();
