@@ -1,5 +1,5 @@
 import path from "path";
-import { RED, GREEN, YELLOW, BLUE, NC, CYAN, EXCLUDED_DIRS, timestamp, green, cyan, yellow, blue } from "./utils.js";
+import { RED, GREEN, YELLOW, BLUE, NC, CYAN, EXCLUDED_DIRS, timestamp, green, red, cyan, yellow, blue } from "./utils.js";
 import { getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
 
 // --- Runtime stats ---
