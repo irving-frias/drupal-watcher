@@ -1,12 +1,8 @@
 import { existsSync, accessSync, constants } from "fs";
 import path from "path";
-import { detectEnvironment } from "./config.js";
 
 export function getDrushCommand(config) {
   if (config.drushCmd) return config.drushCmd;
-  const env = detectEnvironment();
-  if (env === "ddev") return "ddev drush";
-  if (env === "lando") return "lando drush";
   const vendorDrush = path.join(process.cwd(), "vendor/bin/drush");
   const binDrush = path.join(process.cwd(), "bin/drush");
   if (existsSync(vendorDrush)) {

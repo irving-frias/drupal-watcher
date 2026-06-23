@@ -1,7 +1,7 @@
 import { existsSync } from "fs";
 import path from "path";
 import { RED, GREEN, YELLOW, BLUE, NC, bold, dim, POSSIBLE_DOCROOTS } from "./utils.js";
-import { loadConfig, saveConfig, getDefaultConfig, detectDrupalRoot, detectEnvironment, writePid, removePid, checkPid } from "./config.js";
+import { loadConfig, saveConfig, getDefaultConfig, detectDrupalRoot, writePid, removePid, checkPid } from "./config.js";
 import { getDrushCommand, getDrushSpawnArgs, healthCheck } from "./drush.js";
 import { startWatcher, stopWatcher, resetDebounce, printStats, stats, getWatcherHandle } from "./watcher.js";
 
@@ -106,7 +106,6 @@ export async function cmdList() {
 
   console.log(`${BLUE}📋 Configuración del watcher:${NC}`);
   console.log(`  ${YELLOW}Directorio raíz:${NC} ${drupalRoot}`);
-  console.log(`  ${YELLOW}Entorno:${NC} ${detectEnvironment()}`);
   console.log(`  ${YELLOW}Rutas vigiladas:${NC}`);
   config.routes.forEach(r => console.log(`    - ${r}`));
   console.log(`  ${YELLOW}Patrones:${NC} ${config.patterns.join(", ")}`);
@@ -243,7 +242,6 @@ export async function cmdStart(flags = {}) {
   const drushCmdStr = getDrushCommand(config);
 
   console.log(`${GREEN}📁 Directorio raíz:${NC} ${drupalRoot}`);
-  console.log(`${GREEN}🌐 Entorno:${NC} ${detectEnvironment()}`);
   console.log(`${GREEN}🔧 Drush:${NC} ${drushCmdStr} ${config.drushCommand}`);
 
   // Health check

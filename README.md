@@ -27,7 +27,7 @@ Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. 
 - **Vigila** en tiempo real los archivos de tus módulos y temas custom
 - **Detecta automáticamente** cambios en archivos `.html.twig`, `.inc`, `.yml`, `.module` y `.theme`
 - **Ejecuta `drush cr`** de forma inteligente (con debounce para no saturar el sistema)
-- **Se adapta** a tu entorno: DDEV, Lando o local
+- **Compatible** con DDEV, Lando y entornos locales (usa `ddev drupal-watcher` en DDEV)
 - **Persiste** tus rutas personalizadas en un archivo de configuración
 
 ## Características
@@ -39,9 +39,9 @@ Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. 
 - Validación de existencia de carpetas
 
 ### Optimizado para Drupal
-- Detecta automáticamente DDEV, Lando o local
-- Usa el comando Drush correcto según el entorno
+- Detecta automáticamente el docroot de Drupal (docroot, web, html...)
 - Debounce inteligente (800ms por defecto)
+- Compatible con DDEV: ejecuta `ddev drupal-watcher <comando>`
 
 ### Ultra rápido
 - Instalación con Bun (10-30x más rápido que npm)
@@ -102,7 +102,11 @@ Todos los comandos se ejecutan desde la raíz de tu proyecto Drupal usando el bi
 ### Iniciar el watcher
 
 ```bash
+# Local o Lando
 vendor/bin/drupal-watcher start
+
+# DDEV
+ddev drupal-watcher start
 ```
 
 Verás algo como:
@@ -110,8 +114,7 @@ Verás algo como:
 ```
 🚀 Iniciando Drupal Watcher
 📁 Directorio raíz: docroot
-🌐 Entorno: ddev
-🔧 Drush: ddev drush cr
+🔧 Drush: drush cr
 👀 Vigilando rutas:
   - docroot/modules/custom
   - docroot/themes/custom
@@ -234,8 +237,11 @@ El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proy
 # Instalación
 composer require irving-frias/drupal-watcher
 
-# Iniciar watcher
+# Iniciar watcher (local o Lando)
 vendor/bin/drupal-watcher start
+
+# En DDEV
+ddev drupal-watcher start
 
 # Editar un archivo .twig...
 📝 mi-plantilla.html.twig
@@ -273,7 +279,7 @@ Ejecuta `drush cex` automáticamente tras cada cambio:
 
 ```json
 {
-  "postClearCommands": ["ddev drush cex"]
+  "postClearCommands": ["drush cex"]
 }
 ```
 
@@ -328,11 +334,11 @@ Bun no está instalado globalmente en tu sistema. Verifica:
 El watcher busca Drush en:
 - `vendor/bin/drush` (proyecto Drupal)
 - `bin/drush` (alternativa)
-- Comandos de DDEV/Lando
 
 Verifica que:
 1. Drush está instalado: `composer require drush/drush`
 2. Estás ejecutando desde la raíz del proyecto Drupal
+3. Si usas DDEV, ejecuta `ddev drupal-watcher <comando>` en lugar de `vendor/bin/drupal-watcher <comando>`
 
 ### ❌ Error: `Ninguna de las rutas configuradas existe`
 

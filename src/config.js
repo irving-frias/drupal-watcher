@@ -36,18 +36,6 @@ export function detectDrupalRoot(root) {
   return null;
 }
 
-export function detectEnvironment(root) {
-  const r = getRoot(root);
-  if (_rootCache.has(r) && _rootCache.get(r).env) return _rootCache.get(r).env;
-  let env;
-  if (existsSync(path.join(r, ".ddev"))) env = "ddev";
-  else if (existsSync(path.join(r, ".lando.yml")) || existsSync(path.join(r, ".lando"))) env = "lando";
-  else env = "local";
-  if (!_rootCache.has(r)) _rootCache.set(r, {});
-  _rootCache.get(r).env = env;
-  return env;
-}
-
 export function getDefaultConfig(root) {
   const drupalRoot = detectDrupalRoot(root) || "docroot";
   return {

@@ -33,23 +33,6 @@ describe("Config", () => {
     expect(detectDrupalRoot(TEST_DIR)).toBe("web");
   });
 
-  it("should detect ddev environment", async () => {
-    await Bun.spawn(["mkdir", "-p", path.join(TEST_DIR, ".ddev")]).exited;
-    const { detectEnvironment } = await import("../src/config");
-    expect(detectEnvironment(TEST_DIR)).toBe("ddev");
-  });
-
-  it("should detect lando environment", async () => {
-    await Bun.spawn(["mkdir", "-p", path.join(TEST_DIR, ".lando")]).exited;
-    const { detectEnvironment } = await import("../src/config");
-    expect(detectEnvironment(TEST_DIR)).toBe("lando");
-  });
-
-  it("should return local for no env", async () => {
-    const { detectEnvironment } = await import("../src/config");
-    expect(detectEnvironment(TEST_DIR)).toBe("local");
-  });
-
   it("should create default config on first load", async () => {
     const { loadConfig } = await import("../src/config");
     const config = await loadConfig(TEST_DIR);
