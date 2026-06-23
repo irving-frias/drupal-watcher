@@ -10,20 +10,8 @@
     "php": ">=8.1"
   },
   "scripts": {
-    "watcher:start": [
-      "bun run bin/drupal-watcher start"
-    ],
-    "watcher:list": [
-      "bun run bin/drupal-watcher list"
-    ],
-    "watcher:add": [
-      "bun run bin/drupal-watcher add"
-    ],
-    "watcher:remove": [
-      "bun run bin/drupal-watcher remove"
-    ],
-    "watcher:reset": [
-      "bun run bin/drupal-watcher reset"
+    "post-install-cmd": [
+      "@php -r \"echo '🚀 Drupal Watcher instalado. Ejecuta \\'vendor/bin/drupal-watcher list\\' para empezar.\\n';\""
     ]
   }
 }

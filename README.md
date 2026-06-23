@@ -94,19 +94,21 @@ composer require irving-frias/drupal-watcher:@dev
 
 ## Comandos
 
-Todos los comandos se ejecutan desde la raíz de tu proyecto Drupal.
+Todos los comandos se ejecutan desde la raíz de tu proyecto Drupal usando el binario instalado por Composer.
 
 ### Iniciar el watcher
 
 ```bash
-composer watcher:start
+vendor/bin/drupal-watcher start
 ```
 
 Verás algo como:
 
 ```
-🚀 Iniciando Drupal Watcher (Bun + Composer)
-🔧 Usando comando: ddev drush
+🚀 Iniciando Drupal Watcher
+📁 Directorio raíz: docroot
+🌐 Entorno: ddev
+🔧 Drush: ddev drush cr
 👀 Vigilando rutas:
   - docroot/modules/custom
   - docroot/themes/custom
@@ -116,7 +118,7 @@ Verás algo como:
 ### Listar rutas configuradas
 
 ```bash
-composer watcher:list
+vendor/bin/drupal-watcher list
 ```
 
 Muestra las rutas actuales, patrones, debounce y comando Drush.
@@ -124,20 +126,36 @@ Muestra las rutas actuales, patrones, debounce y comando Drush.
 ### Añadir una nueva ruta
 
 ```bash
-composer watcher:add docroot/modules/contrib
+vendor/bin/drupal-watcher add docroot/modules/contrib
 ```
 
 ### Eliminar una ruta
 
 ```bash
-composer watcher:remove docroot/modules/contrib
+vendor/bin/drupal-watcher remove docroot/modules/contrib
 ```
 
 ### Restablecer rutas por defecto
 
 ```bash
-composer watcher:reset
+vendor/bin/drupal-watcher reset
 ```
+
+### Comandos como alias de Composer (opcional)
+
+Si prefieres `composer watcher:*`, añade estos scripts a tu `composer.json` raíz:
+
+```json
+"scripts": {
+    "watcher:start": "vendor/bin/drupal-watcher start",
+    "watcher:list": "vendor/bin/drupal-watcher list",
+    "watcher:add": "vendor/bin/drupal-watcher add",
+    "watcher:remove": "vendor/bin/drupal-watcher remove",
+    "watcher:reset": "vendor/bin/drupal-watcher reset"
+}
+```
+
+Luego podrás ejecutar `composer watcher:start`, etc.
 
 ## Configuración
 
@@ -152,8 +170,12 @@ El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proy
     "docroot/themes/custom"
   ],
   "patterns": [".html.twig", ".inc", ".yml", ".module", ".theme"],
+  "excludePatterns": [],
   "debounce": 800,
-  "drushCmd": null
+  "drushCmd": null,
+  "drushCommand": "cr",
+  "drushArgs": [],
+  "postClearCommands": []
 }
 ```
 
@@ -163,14 +185,21 @@ El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proy
 | :--- | :--- | :--- |
 | `routes` | Lista de rutas a vigilar | `["docroot/modules/custom", "docroot/themes/custom"]` |
 | `patterns` | Extensiones de archivo a vigilar | `[".html.twig", ".inc", ".yml", ".module", ".theme"]` |
-| `debounce` | Tiempo de espera (ms) antes de ejecutar `drush cr` | `800` |
-| `drushCmd` | Comando Drush personalizado. Si es `null`, se detecta automáticamente | `null` |
+| `excludePatterns` | Extensiones a ignorar (ej: `[".css", ".js"]`) | `[]` |
+| `debounce` | Tiempo de espera (ms) antes de ejecutar drush | `800` |
+| `drushCmd` | Comando Drush personalizado (ej: `"ddev drush"`) | `null` (auto-detecta) |
+| `drushCommand` | Subcomando de Drush a ejecutar | `"cr"` |
+| `drushArgs` | Argumentos extra para Drush | `[]` |
+| `postClearCommands` | Comandos a ejecutar tras limpiar caché | `[]` |
 
 ### Notas sobre la configuración
 
 - **Patrones**: Añade o quita extensiones según tus necesidades
+- **Exclude patterns**: Ignora archivos como `.css` o `.js` si no quieres que disparen `drush cr`
 - **Debounce**: Ajusta según el rendimiento de tu proyecto (proyectos grandes pueden necesitar más tiempo)
-- **Drush personalizado**: Si usas un binario Drush en una ubicación específica, defínelo aquí
+- **Drush personalizado**: Si usas un binario Drush en una ubicación específica, defínelo en `drushCmd`
+- **drushCommand**: Cambia a `"cc bin"` para limpieza más rápida (solo un bin de caché) en vez de `"cr"` (completo)
+- **postClearCommands**: Array de comandos shell a ejecutar tras cada limpieza (ej: `["ddev drush cex", "echo 'listo'"]`)
 
 ## Ejemplos de uso
 
@@ -181,10 +210,10 @@ El archivo `watcher.config.json` se crea automáticamente en la raíz de tu proy
 composer require irving-frias/drupal-watcher
 
 # Iniciar watcher
-composer watcher:start
+vendor/bin/drupal-watcher start
 
 # Editar un archivo .twig...
-📝 Cambio detectado: mi-plantilla.html.twig
+📝 mi-plantilla.html.twig
 🔄 Limpiando caché...
 ✅ Caché limpiada correctamente.
 ```
@@ -193,25 +222,37 @@ composer watcher:start
 
 ```bash
 # Añadir módulos contrib
-composer watcher:add docroot/modules/contrib
+vendor/bin/drupal-watcher add docroot/modules/contrib
 
 # Verificar
-composer watcher:list
+vendor/bin/drupal-watcher list
 
 # Ahora vigila tanto custom como contrib
 ```
 
-### Ejemplo 3: Ejecutar un comando diferente
+### Ejemplo 3: Cache clear más rápido
 
-Edita `watcher.config.json` para ejecutar `drush cex`:
+Para limpiar solo un bin en vez de toda la caché, edita `watcher.config.json`:
 
 ```json
 {
-  "drushCmd": "ddev drush cex"
+  "drushCommand": "cc bin"
 }
 ```
 
-### Ejemplo 4: Compilar a binario standalone
+Esto ejecuta `drush cc bin` en vez de `drush cr`, que es más rápido.
+
+### Ejemplo 4: Comandos post-clear
+
+Ejecuta `drush cex` automáticamente tras cada cambio:
+
+```json
+{
+  "postClearCommands": ["ddev drush cex"]
+}
+```
+
+### Ejemplo 5: Compilar a binario standalone
 
 Si no quieres depender de Composer/Bun para el día a día:
 
@@ -244,7 +285,7 @@ Verifica que:
 
 Asegúrate de que:
 1. Las carpetas `docroot/modules/custom` y `docroot/themes/custom` existen
-2. O añade rutas válidas con `composer watcher:add`
+2. O añade rutas válidas con `vendor/bin/drupal-watcher add`
 
 ### ❌ El watcher no detecta cambios
 

@@ -1,8 +1,7 @@
 #!/usr/bin/env bun
 
-import { existsSync, accessSync, constants, readFileSync, writeFileSync } from "fs";
-import { watch } from "fs";
-import { spawn } from "child_process";
+import { existsSync, accessSync, constants } from "fs";
+import { $ } from "bun";
 import path from "path";
 
 const RED = "\x1b[31m";
@@ -61,17 +60,21 @@ function getDefaultConfig() {
   };
 }
 
-function loadConfig() {
+async function loadConfig() {
   if (_configCache) return _configCache;
-  if (!existsSync(CONFIG_FILE)) {
+
+  const configFile = Bun.file(CONFIG_FILE);
+  if (!(await configFile.exists())) {
     const def = getDefaultConfig();
-    writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2));
+    await Bun.write(CONFIG_FILE, JSON.stringify(def, null, 2));
     _configCache = { ...def };
     return _configCache;
   }
+
   try {
-    const raw = readFileSync(CONFIG_FILE, "utf-8");
+    const raw = await configFile.text();
     const config = JSON.parse(raw);
+
     if (!config.drupalRoot) {
       const detected = detectDrupalRoot();
       if (detected) {
@@ -83,9 +86,10 @@ function loadConfig() {
           }
           return r;
         });
-        saveConfig(config);
+        await saveConfig(config);
       }
     }
+
     _configCache = { ...getDefaultConfig(), ...config };
     return _configCache;
   } catch {
@@ -96,8 +100,8 @@ function loadConfig() {
   }
 }
 
-function saveConfig(config) {
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+async function saveConfig(config) {
+  await Bun.write(CONFIG_FILE, JSON.stringify(config, null, 2));
   _configCache = null;
 }
 
@@ -148,29 +152,18 @@ async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
   console.log(`${YELLOW}🔄 Limpiando caché...${suffix}${NC}`);
 
   try {
-    const proc = spawn(drushBase, drushArgsArray, { stdio: ["ignore", "pipe", "pipe"] });
-
-    let stderr = "";
-    proc.stderr.on("data", d => { stderr += d.toString(); });
-
-    const exitCode = await new Promise(resolve => {
-      proc.on("close", resolve);
-      proc.on("error", () => resolve(1));
-    });
+    const { exitCode, stderr } = await $`${drushBase} ${drushArgsArray}`.quiet().nothrow();
 
     if (exitCode === 0) {
       console.log(`${GREEN}✅ Caché limpiada correctamente.${NC}`);
     } else {
-      console.error(`${RED}❌ Error drush (exit ${exitCode}):${NC} ${stderr || "drush no disponible"}`);
+      const errText = await new Response(stderr).text();
+      console.error(`${RED}❌ Error drush (exit ${exitCode}):${NC} ${errText || "drush no disponible"}`);
     }
 
     for (const cmd of postClearCommands) {
       console.log(`${YELLOW}⚡ ${cmd}${NC}`);
-      const postProc = spawn("sh", ["-c", cmd], { stdio: "inherit" });
-      await new Promise(resolve => {
-        postProc.on("close", resolve);
-        postProc.on("error", resolve);
-      });
+      await $`${cmd}`.nothrow();
     }
   } catch (error) {
     console.error(`${RED}❌ Error:${NC} ${error.message}`);
@@ -187,8 +180,8 @@ function scheduleCacheClear(config) {
 }
 
 // --- Commands ---
-function cmdList() {
-  const config = loadConfig();
+async function cmdList() {
+  const config = await loadConfig();
   const drushSpawn = getDrushSpawnArgs(config);
   const drupalRoot = config.drupalRoot || detectDrupalRoot() || "no detectado";
 
@@ -208,12 +201,12 @@ function cmdList() {
   }
 }
 
-function cmdAdd(newRoute) {
+async function cmdAdd(newRoute) {
   if (!newRoute) {
-    console.error(`${RED}❌ Especifica una ruta. Ej: composer watcher:add modules/contrib${NC}`);
+    console.error(`${RED}❌ Especifica una ruta. Ej: vendor/bin/drupal-watcher add modules/contrib${NC}`);
     process.exit(1);
   }
-  const config = loadConfig();
+  const config = await loadConfig();
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
   if (!drupalRoot) {
     console.error(`${RED}❌ No se pudo detectar el directorio raíz de Drupal.${NC}`);
@@ -236,46 +229,46 @@ function cmdAdd(newRoute) {
   }
 
   config.routes.push(normalized);
-  saveConfig(config);
+  await saveConfig(config);
   console.log(`${GREEN}✅ Ruta añadida: ${normalized}${NC}`);
-  cmdList();
+  await cmdList();
 }
 
-function cmdRemove(routeToRemove) {
+async function cmdRemove(routeToRemove) {
   if (!routeToRemove) {
-    console.error(`${RED}❌ Especifica una ruta. Ej: composer watcher:remove modules/contrib${NC}`);
+    console.error(`${RED}❌ Especifica una ruta. Ej: vendor/bin/drupal-watcher remove modules/contrib${NC}`);
     process.exit(1);
   }
-  const config = loadConfig();
+  const config = await loadConfig();
   const normalized = path.normalize(routeToRemove).replace(/^\.\//, "");
   const index = config.routes.indexOf(normalized);
   if (index === -1) {
     console.error(`${RED}❌ La ruta no está en la lista.${NC}`);
-    cmdList();
+    await cmdList();
     process.exit(1);
   }
   config.routes.splice(index, 1);
-  saveConfig(config);
+  await saveConfig(config);
   console.log(`${GREEN}✅ Ruta eliminada: ${normalized}${NC}`);
-  cmdList();
+  await cmdList();
 }
 
-function cmdReset() {
-  const config = loadConfig();
+async function cmdReset() {
+  const config = await loadConfig();
   const def = getDefaultConfig();
   config.routes = [...def.routes];
   config.drupalRoot = def.drupalRoot;
-  saveConfig(config);
+  await saveConfig(config);
   console.log(`${GREEN}✅ Rutas restablecidas a valores por defecto.${NC}`);
-  cmdList();
+  await cmdList();
 }
 
 // --- Start ---
-const watchers = [];
+let watcherHandle = null;
 
-function cmdStart() {
+async function cmdStart() {
   console.log(`${YELLOW}🚀 Iniciando Drupal Watcher${NC}`);
-  const config = loadConfig();
+  const config = await loadConfig();
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
 
   if (!drupalRoot) {
@@ -291,17 +284,12 @@ function cmdStart() {
   console.log(`${GREEN}🌐 Entorno:${NC} ${detectEnvironment()}`);
   console.log(`${GREEN}🔧 Drush:${NC} ${drushCmdStr} ${config.drushCommand}`);
 
-  // Health check (async, no bloquea)
-  const healthProc = spawn(drushBase, [...drushArgs.slice(0, -1), "status", "--format=json"], {
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  let healthOut = "";
-  healthProc.stdout.on("data", d => { healthOut += d.toString(); });
-  healthProc.on("close", code => {
-    if (code !== 0) {
-      console.log(`${YELLOW}⚠️ Drush no responde. El watcher iniciará igualmente.${NC}`);
-    }
-  });
+  // Health check via Bun shell
+  const healthCmd = [...drushCmdStr.split(/\s+/), "status", "--format=json"].join(" ");
+  const healthResult = await $`${healthCmd}`.quiet().nothrow();
+  if (healthResult.exitCode !== 0) {
+    console.log(`${YELLOW}⚠️ Drush no responde. El watcher iniciará igualmente.${NC}`);
+  }
 
   // Show routes
   console.log(`${GREEN}👀 Vigilando rutas:${NC}`);
@@ -319,68 +307,80 @@ function cmdStart() {
 
   if (!hasValidRoute) {
     console.error(`${RED}❌ Ninguna de las rutas configuradas existe.${NC}`);
-    console.error(`${YELLOW}   Añade rutas con 'composer watcher:add'${NC}`);
+    console.error(`${YELLOW}   Añade rutas con 'vendor/bin/drupal-watcher add'${NC}`);
     process.exit(1);
   }
 
-  // Single recursive watcher on drupal root
+  // Single recursive Bun.watch on drupal root
   const routeSuffixes = config.routes.map(r => r.replace(`${drupalRoot}/`, "").replace(drupalRoot, ""));
 
-  const watcher = watch(rootPath, { recursive: true }, (eventType, filename) => {
-    if (!filename) return;
+  const onChange = (info) => {
+    if (!info?.path) return;
+    const normalized = path.normalize(info.path);
 
-    const normalized = path.normalize(filename);
-
-    // Check if file is in one of the watched routes
     if (!routeSuffixes.some(suffix => normalized.startsWith(suffix))) return;
+    if (!config.patterns.some(p => info.path.endsWith(p))) return;
+    if (config.excludePatterns?.some(p => info.path.endsWith(p))) return;
 
-    // Check pattern match
-    if (!config.patterns.some(p => filename.endsWith(p))) return;
-
-    // Check exclude patterns
-    if (config.excludePatterns?.some(p => filename.endsWith(p))) return;
-
-    // Track change
-    if (!changeAccumulator.has(filename)) {
-      const displayName = path.basename(filename);
+    if (!changeAccumulator.has(info.path)) {
+      const displayName = path.basename(info.path);
       const total = changeAccumulator.size + 1;
       console.log(`${GREEN}📝 ${displayName}${total > 1 ? ` (${total})` : ""}${NC}`);
     }
-    changeAccumulator.set(filename, Date.now());
+    changeAccumulator.set(info.path, Date.now());
     scheduleCacheClear(config);
-  });
+  };
 
-  watcher.on("error", err => {
-    console.error(`${RED}❌ Error en watcher:${NC} ${err.message}`);
-  });
+  const onError = (err) => {
+    console.error(`${RED}❌ Error en watcher:${NC} ${err?.message || err}`);
+  };
 
-  watchers.push(watcher);
+  // Use Bun.watch natively
+  try {
+    watcherHandle = Bun.watch({
+      paths: [rootPath],
+      recursive: true,
+      onChange,
+      onError,
+    });
+  } catch {
+    // Fallback to fs.watch if Bun.watch is not available
+    const { watch: fsWatch } = await import("fs");
+    watcherHandle = fsWatch(rootPath, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      onChange({ path: filename, type: eventType });
+    });
+    watcherHandle.on("error", onError);
+  }
 
   console.log(`${GREEN}✅ Watcher activo. Esperando cambios... (Ctrl+C para salir)${NC}`);
 
   process.on("SIGINT", () => {
     console.log(`\n${YELLOW}🛑 Deteniendo watcher...${NC}`);
     resetDebounce();
-    for (const w of watchers) {
-      try { w.close(); } catch {}
+    if (watcherHandle) {
+      try {
+        if (typeof watcherHandle.stop === "function") watcherHandle.stop();
+        else if (typeof watcherHandle.close === "function") watcherHandle.close();
+      } catch {}
     }
     process.exit(0);
   });
 }
 
 // --- Main ---
-function main() {
+async function main() {
   const args = process.argv.slice(2);
   const command = args[0] || "start";
 
   switch (command) {
-    case "list": cmdList(); break;
-    case "add": cmdAdd(args[1]); break;
-    case "remove": cmdRemove(args[1]); break;
-    case "reset": cmdReset(); break;
+    case "list": await cmdList(); break;
+    case "add": await cmdAdd(args[1]); break;
+    case "remove": await cmdRemove(args[1]); break;
+    case "reset": await cmdReset(); break;
     case "start":
-    default: cmdStart(); break;
+    default: await cmdStart(); break;
   }
 }
 
-main();
+await main();
