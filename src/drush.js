@@ -1,10 +1,13 @@
 import { existsSync, accessSync, constants } from "fs";
 import path from "path";
+import { YELLOW, NC } from "./utils.js";
 
 export function getDrushCommand(config) {
   if (config.drushCmd) return config.drushCmd;
+
   const vendorDrush = path.join(process.cwd(), "vendor/bin/drush");
   const binDrush = path.join(process.cwd(), "bin/drush");
+
   if (existsSync(vendorDrush)) {
     try { accessSync(vendorDrush, constants.X_OK); return vendorDrush; } catch {}
   }
@@ -24,9 +27,9 @@ export function getDrushSpawnArgs(config) {
 }
 
 export async function healthCheck(config) {
-  const drushCmdStr = getDrushCommand(config);
-  const healthParts = [...drushCmdStr.split(/\s+/), "status", "--format=json"];
-  const proc = Bun.spawn(healthParts, { stdout: "pipe", stderr: "pipe" });
+  const cmdStr = getDrushCommand(config);
+  const parts = [...cmdStr.split(/\s+/), "status", "--format=json"];
+  const proc = Bun.spawn(parts, { stdout: "pipe", stderr: "pipe" });
   const exitCode = await proc.exited;
   return exitCode === 0;
 }

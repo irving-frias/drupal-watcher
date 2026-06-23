@@ -1,7 +1,7 @@
 {
   "name": "drupal-watcher",
   "version": "0.1.1",
-  "description": "Watcher para Drupal que vigila módulos y temas custom y ejecuta drush cr automáticamente",
+  "description": "Drupal file watcher — monitors custom modules/themes and auto-runs drush cr",
   "type": "module",
   "bin": {
     "drupal-watcher": "bin/drupal-watcher"

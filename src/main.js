@@ -1,10 +1,7 @@
 import { RED, YELLOW, NC } from "./utils.js";
-import { cmdStart } from "./commands.js";
-import { cmdList } from "./commands.js";
-import { cmdStatus } from "./commands.js";
-import { cmdAdd, cmdRemove, cmdReset, cmdHelp } from "./commands.js";
+import { cmdStart, cmdList, cmdStatus, cmdAdd, cmdRemove, cmdReset, cmdHelp } from "./commands.js";
 
-function parseFlags(argv) {
+export function parseFlags(argv) {
   const flags = {
     abortOnDrushError: false,
     watchRoutes: [],
@@ -22,6 +19,7 @@ function parseFlags(argv) {
 
 export async function main() {
   const args = process.argv.slice(2);
+
   if (args.length === 0) {
     cmdHelp();
     return;
@@ -29,43 +27,47 @@ export async function main() {
 
   const command = args[0];
 
-  if (command === "help" || command === "-h" || command === "--help") {
-    cmdHelp(args[1]);
-    return;
-  }
+  try {
+    switch (command) {
+      case "help":
+      case "-h":
+      case "--help":
+        cmdHelp(args[1]);
+        break;
 
-  if (command === "start") {
-    const { flags } = parseFlags(args.slice(1));
-    await cmdStart(flags);
-    return;
-  }
+      case "start": {
+        const { flags } = parseFlags(args.slice(1));
+        await cmdStart(flags);
+        break;
+      }
 
-  if (command === "list") {
-    await cmdList();
-    return;
-  }
+      case "list":
+        await cmdList();
+        break;
 
-  if (command === "status") {
-    await cmdStatus();
-    return;
-  }
+      case "status":
+        await cmdStatus();
+        break;
 
-  if (command === "add") {
-    await cmdAdd(args[1]);
-    return;
-  }
+      case "add":
+        await cmdAdd(args[1]);
+        break;
 
-  if (command === "remove") {
-    await cmdRemove(args[1]);
-    return;
-  }
+      case "remove":
+        await cmdRemove(args[1]);
+        break;
 
-  if (command === "reset") {
-    await cmdReset();
-    return;
-  }
+      case "reset":
+        await cmdReset();
+        break;
 
-  console.error(`${RED}✗ Comando desconocido: ${command}${NC}`);
-  console.log(`  ${YELLOW}Ejecuta 'drupal-watcher help' para ver los comandos disponibles.${NC}`);
-  process.exit(1);
+      default:
+        console.error(`${RED}✖ Unknown command: ${command}${NC}`);
+        console.log(`  ${YELLOW}Run 'drupal-watcher help' to see available commands.${NC}`);
+        process.exit(1);
+    }
+  } catch (err) {
+    console.error(`${RED}✖ Unexpected error:${NC} ${err?.message || err}`);
+    process.exit(1);
+  }
 }
