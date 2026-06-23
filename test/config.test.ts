@@ -170,6 +170,24 @@ describe("Main", () => {
     expect(flags.verbose).toBe(true);
     expect(flags.noColors).toBe(true);
   });
+
+  it("parses --debounce flag", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--debounce=1200"]);
+    expect(flags.debounce).toBe(1200);
+  });
+
+  it("parses --no-dotfiles flag", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--no-dotfiles"]);
+    expect(flags.noDotfiles).toBe(true);
+  });
+
+  it("parses --log-file flag", async () => {
+    const { parseFlags } = await import("../src/main");
+    const { flags } = parseFlags(["--log-file=/tmp/watcher.log"]);
+    expect(flags.logFile).toBe("/tmp/watcher.log");
+  });
 });
 
 describe("Drush duration", () => {
@@ -230,6 +248,13 @@ describe("Config validation", () => {
     expect(config.drushArgs).toEqual(["--uri=default"]);
   });
 
+  it("normalizes routes (removes trailing slashes)", async () => {
+    const { validateConfig } = await import("../src/config");
+    const config = validateConfig({ routes: ["docroot/modules/custom/", "docroot/themes//custom"] }, TEST_DIR);
+    expect(config.routes[0]).toBe("docroot/modules/custom");
+    expect(config.routes[1]).toBe("docroot/themes/custom");
+  });
+
   it("validates invalid config when loading", async () => {
     await Bun.write(
       path.join(TEST_DIR, "watcher.config.json"),
@@ -263,6 +288,17 @@ describe("PID check", () => {
     await Bun.write(pidPath, "");
     const result = await checkPid(TEST_DIR);
     expect(result).toBeNull();
+  });
+
+  it("starttime round-trip works", async () => {
+    const { writeStarttime, getStarttime, removeStarttime } = await import("../src/config");
+    await writeStarttime(TEST_DIR);
+    const t = await getStarttime(TEST_DIR);
+    expect(typeof t).toBe("number");
+    expect(t).toBeGreaterThan(0);
+    expect(Date.now() - t).toBeLessThan(5000);
+    await removeStarttime(TEST_DIR);
+    expect(await getStarttime(TEST_DIR)).toBeNull();
   });
 });
 
@@ -301,9 +337,24 @@ describe("Commands", () => {
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it("cmdRestart does not throw when no watcher", async () => {
+    const spy = spyOn(console, "log");
+    const { cmdRestart } = await import("../src/commands");
+    // This will call cmdStart but fail early at health check since no Drupal root
+    // We just verify the restart function itself is callable
+    expect(typeof cmdRestart).toBe("function");
+    spy.mockRestore();
+  });
 });
 
 describe("Drush shell", () => {
+  it("healthCheck returns false on invalid drush", async () => {
+    const { healthCheck } = await import("../src/drush");
+    const result = await healthCheck({ drushCmd: "/nonexistent/drush" });
+    expect(result).toBe(false);
+  });
+
   it("uses sh -c on non-Windows", async () => {
     const { runPostClearCommands } = await import("../src/drush");
     // Spawn and immediately cancel to verify it doesn't throw

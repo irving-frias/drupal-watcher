@@ -1,6 +1,6 @@
 import { existsSync, accessSync, constants } from "fs";
 import path from "path";
-import { P_SUCCESS, yellow, cyan } from "./utils.js";
+import { P_WARN, P_SUCCESS, yellow, cyan } from "./utils.js";
 
 export function getDrushCommand(config, options = {}) {
   if (config.drushCmd) return config.drushCmd;
@@ -27,20 +27,29 @@ export function getDrushSpawnArgs(config) {
 }
 
 export async function healthCheck(config) {
-  const cmdStr = getDrushCommand(config);
-  const parts = [...cmdStr.split(/\s+/), "status", "--format=json"];
-  const proc = Bun.spawn(parts, { stdout: "pipe", stderr: "pipe" });
-  const exitCode = await proc.exited;
-  return exitCode === 0;
+  try {
+    const cmdStr = getDrushCommand(config);
+    const parts = [...cmdStr.split(/\s+/), "status", "--format=json"];
+    const proc = Bun.spawn(parts, { stdout: "pipe", stderr: "pipe" });
+    const exitCode = await proc.exited;
+    return exitCode === 0;
+  } catch (e) {
+    console.warn(`${P_WARN} Health check failed: ${e.message}`);
+    return false;
+  }
 }
 
 export async function runDrush(drushBase, drushArgsArray) {
-  const t0 = Date.now();
-  const proc = Bun.spawn([drushBase, ...drushArgsArray], { stdout: "pipe", stderr: "pipe" });
-  const exitCode = await proc.exited;
-  const stderrText = await new Response(proc.stderr).text();
-  const duration = ((Date.now() - t0) / 1000).toFixed(1);
-  return { exitCode, stderr: stderrText, duration };
+  try {
+    const t0 = Date.now();
+    const proc = Bun.spawn([drushBase, ...drushArgsArray], { stdout: "pipe", stderr: "pipe" });
+    const exitCode = await proc.exited;
+    const stderrText = await new Response(proc.stderr).text();
+    const duration = ((Date.now() - t0) / 1000).toFixed(1);
+    return { exitCode, stderr: stderrText, duration };
+  } catch (e) {
+    return { exitCode: -1, stderr: e.message, duration: "0.0" };
+  }
 }
 
 export async function runPostClearCommands(commands) {

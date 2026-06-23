@@ -1,12 +1,20 @@
 import { existsSync } from "fs";
 import path from "path";
-import { P_ERROR, P_INFO, POSSIBLE_DOCROOTS, cyan } from "./utils.js";
+import { P_ERROR, P_WARN, P_INFO, P_SUCCESS, POSSIBLE_DOCROOTS, cyan, yellow } from "./utils.js";
 
 function getRoot(r) {
   return r || process.cwd();
 }
 
+const _rootCache = new Map();
+let _customConfigPath = null;
+
+export function setCustomConfigPath(p) {
+  _customConfigPath = p;
+}
+
 function configPath(root) {
+  if (_customConfigPath) return _customConfigPath;
   return path.join(getRoot(root), "watcher.config.json");
 }
 
@@ -14,7 +22,9 @@ function pidPath(root) {
   return path.join(getRoot(root), ".drupal-watcher.pid");
 }
 
-const _rootCache = new Map();
+function starttimePath(root) {
+  return path.join(getRoot(root), ".drupal-watcher.starttime");
+}
 
 export function detectDrupalRoot(root) {
   const r = getRoot(root);
@@ -119,6 +129,7 @@ export function validateConfig(config, root) {
   if (!Array.isArray(config.drushArgs)) config.drushArgs = defaults.drushArgs;
   if (!Array.isArray(config.postClearCommands)) config.postClearCommands = defaults.postClearCommands;
   if (typeof config.drupalRoot !== "string") config.drupalRoot = defaults.drupalRoot;
+  config.routes = config.routes.map(r => path.normalize(r).replace(/\/+$/, ""));
   return config;
 }
 
@@ -136,6 +147,7 @@ export function getPidFile(root) {
 
 export async function writePid(root) {
   await Bun.write(pidPath(root), String(process.pid));
+  await writeStarttime(root);
 }
 
 export async function removePid(root) {
@@ -143,7 +155,34 @@ export async function removePid(root) {
     await Bun.write(pidPath(root), "");
     const { rm } = await import("fs/promises");
     await rm(pidPath(root), { force: true });
-  } catch {}
+  } catch (e) {
+    console.warn(`${P_WARN} Failed to remove PID file: ${e.message}`);
+  }
+  await removeStarttime(root);
+}
+
+// --- Start time file (for uptime) ---
+export async function writeStarttime(root) {
+  const r = getRoot(root);
+  await Bun.write(starttimePath(r), String(Date.now()));
+}
+
+export async function getStarttime(root) {
+  const r = getRoot(root);
+  const file = Bun.file(starttimePath(r));
+  if (!(await file.exists())) return null;
+  const t = (await file.text()).trim();
+  return t ? parseInt(t, 10) : null;
+}
+
+export async function removeStarttime(root) {
+  const r = getRoot(root);
+  try {
+    const { rm } = await import("fs/promises");
+    await rm(starttimePath(r), { force: true });
+  } catch (e) {
+    console.warn(`${P_WARN} Failed to remove starttime file: ${e.message}`);
+  }
 }
 
 export async function checkPid(root) {

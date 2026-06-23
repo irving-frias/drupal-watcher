@@ -1,5 +1,8 @@
 import { P_ERROR, P_WARN, yellow, setColorsEnabled } from "./utils.js";
-import { cmdStart, cmdList, cmdStatus, cmdAdd, cmdRemove, cmdReset, cmdHelp } from "./commands.js";
+import {
+  cmdStart, cmdList, cmdStatus, cmdAdd, cmdRemove, cmdReset, cmdRestart, cmdHelp,
+} from "./commands.js";
+import { setCustomConfigPath, invalidateConfigCache } from "./config.js";
 
 const BIN = "vendor/bin/drupal-watcher";
 
@@ -11,6 +14,9 @@ export function parseFlags(argv) {
     dryRun: false,
     verbose: false,
     noColors: false,
+    debounce: null,
+    noDotfiles: false,
+    logFile: null,
   };
   const extra = [];
 
@@ -35,6 +41,19 @@ export function parseFlags(argv) {
       flags.verbose = true;
     } else if (arg === "--no-colors") {
       flags.noColors = true;
+    } else if (arg.startsWith("--debounce=")) {
+      flags.debounce = parseInt(arg.slice(11), 10);
+      if (isNaN(flags.debounce) || flags.debounce <= 0) {
+        console.error(`${P_ERROR} ${yellow("--debounce")} requires a positive number.`);
+        process.exit(1);
+      }
+    } else if (arg === "--no-dotfiles") {
+      flags.noDotfiles = true;
+    } else if (arg.startsWith("--log-file=")) {
+      flags.logFile = arg.slice(11);
+    } else if (arg.startsWith("--config=")) {
+      // Handled globally in main()
+      extra.push(arg);
     } else {
       extra.push(arg);
     }
@@ -49,6 +68,14 @@ export async function main() {
   // Handle --no-colors before any output
   if (args.includes("--no-colors")) {
     setColorsEnabled(false);
+  }
+
+  // Handle --config before any command
+  const configIdx = args.findIndex(a => a.startsWith("--config="));
+  if (configIdx !== -1) {
+    const p = args[configIdx].slice(9);
+    setCustomConfigPath(p);
+    invalidateConfigCache();
   }
 
   // Handle --version and -V as standalone (before command check)
@@ -97,6 +124,10 @@ export async function main() {
 
       case "reset":
         await cmdReset();
+        break;
+
+      case "restart":
+        await cmdRestart();
         break;
 
       case "--version":

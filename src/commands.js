@@ -7,7 +7,7 @@ import {
 } from "./utils.js";
 import {
   loadConfig, saveConfig, getDefaultConfig, detectDrupalRoot,
-  writePid, removePid, checkPid,
+  writePid, removePid, checkPid, getStarttime,
 } from "./config.js";
 import { getDrushCommand, getDrushSpawnArgs, healthCheck } from "./drush.js";
 import { startWatcher, stopWatcher, resetDebounce, printStats, getWatcherHandle } from "./watcher.js";
@@ -31,6 +31,7 @@ const COMMANDS = [
   ["add    <path>", "Add a route to watch"],
   ["remove <path>", "Remove a watched route"],
   ["reset", "Reset routes to defaults"],
+  ["restart", "Restart the file watcher"],
   ["help   [command]", "Show detailed help for a command"],
 ];
 
@@ -41,6 +42,10 @@ const GLOBAL_FLAGS = [
   ["--dry-run", "Show what would happen without starting the watcher"],
   ["--verbose, -v", "Show full Drush output"],
   ["--no-colors", "Disable colored output"],
+  ["--debounce=<ms>", "Override debounce interval"],
+  ["--no-dotfiles", "Ignore dotfiles (.*)"],
+  ["--log-file=<path>", "Save output to a file"],
+  ["--config=<path>", "Use a custom config file"],
   ["--version, -V", "Show version number"],
 ];
 
@@ -117,6 +122,12 @@ export function cmdHelp(command) {
     return;
   }
 
+  if (command === "restart") {
+    printHeader("drupal-watcher restart");
+    console.log("  Restart the file watcher (stop + start).");
+    return;
+  }
+
   // General help
   console.log(`${yellow("Drupal Watcher")} — Watch Drupal files and auto-run drush cr`);
   console.log();
@@ -165,6 +176,13 @@ export async function cmdStatus() {
   } else {
     console.log(`${P_SUCCESS} Watcher is active`);
     console.log(`  ${yellow("PID:")} ${pid}`);
+    const starttime = await getStarttime();
+    if (starttime) {
+      const elapsed = Math.round((Date.now() - starttime) / 1000);
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      console.log(`  ${yellow("Uptime:")} ${mins}m ${secs}s`);
+    }
   }
 }
 
@@ -266,6 +284,21 @@ export async function cmdReset() {
   await cmdList();
 }
 
+// ── Restart ────────────────────────────────────────────────
+
+export async function cmdRestart() {
+  const pid = await checkPid();
+  if (pid && pid !== "stale") {
+    console.log(`${P_INFO} Stopping watcher (PID: ${pid})...`);
+    process.kill(parseInt(pid, 10), "SIGTERM");
+    await removePid();
+    await new Promise(r => setTimeout(r, 1000));
+  } else {
+    console.log(`${P_INFO} No active watcher to stop. Starting fresh.`);
+  }
+  await cmdStart();
+}
+
 async function ask(prompt) {
   const buf = new Uint8Array(1024);
   await Bun.write(Bun.stdout, Buffer.from(prompt));
@@ -277,7 +310,10 @@ async function ask(prompt) {
 // ── Start ─────────────────────────────────────────────────
 
 export async function cmdStart(flags = {}) {
-  const { abortOnDrushError = false, watchRoutes = [], noWatchRoutes = [], dryRun = false, verbose = false } = flags;
+  const {
+    abortOnDrushError = false, watchRoutes = [], noWatchRoutes = [],
+    dryRun = false, verbose = false, debounce, noDotfiles = false, logFile,
+  } = flags;
 
   if (dryRun) console.log(`${cyan("🏁")} Dry run mode — no watcher will be started\n`);
 
@@ -291,6 +327,10 @@ export async function cmdStart(flags = {}) {
   }
 
   const config = await loadConfig();
+  if (debounce) config.debounce = debounce;
+  if (noDotfiles) {
+    config.excludePatterns = [...(config.excludePatterns || []), ".*"];
+  }
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
   const drushPath = getDrushCommand(config);
 
@@ -356,6 +396,21 @@ export async function cmdStart(flags = {}) {
   }
 
   config.routes = routes;
+
+  if (logFile) {
+    const writer = Bun.file(logFile).writer();
+    const origLog = console.log;
+    const origError = console.error;
+    console.log = (...args) => {
+      origLog(...args);
+      writer.write(args.map(String).join(" ") + "\n");
+    };
+    console.error = (...args) => {
+      origError(...args);
+      writer.write(args.map(String).join(" ") + "\n");
+    };
+  }
+
   await startWatcher(config);
 
   if (!getWatcherHandle()) {
