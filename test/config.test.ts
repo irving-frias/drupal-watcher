@@ -248,11 +248,23 @@ describe("Config validation", () => {
     expect(config.drushArgs).toEqual(["--uri=default"]);
   });
 
-  it("accepts valid commandsPerPattern", async () => {
+  it("accepts valid commandsPerPattern merged with defaults", async () => {
     const { validateConfig } = await import("../src/config");
-    const cpp = { ".html.twig": "cc twig", ".module": "cc plugin" };
+    const cpp = { ".html.twig": "custom-command" };
     const config = validateConfig({ commandsPerPattern: cpp }, TEST_DIR);
+    // User override takes precedence
+    expect(config.commandsPerPattern[".html.twig"]).toBe("custom-command");
+    // Defaults still present
+    expect(config.commandsPerPattern[".theme"]).toBe("cc theme-registry");
+    expect(config.commandsPerPattern[".php"]).toBe("cr");
+    expect(config.commandsPerPattern[".yml"]).toBe("cc plugin");
+  });
+
+  it("uses all defaults when commandsPerPattern is empty", async () => {
+    const { validateConfig } = await import("../src/config");
+    const config = validateConfig({ commandsPerPattern: {} }, TEST_DIR);
     expect(config.commandsPerPattern[".html.twig"]).toBe("cc twig");
+    expect(config.commandsPerPattern[".module"]).toBe("cc plugin");
   });
 
   it("rejects non-object commandsPerPattern", async () => {
@@ -260,7 +272,9 @@ describe("Config validation", () => {
     const config = validateConfig({ commandsPerPattern: "invalid" }, TEST_DIR);
     expect(typeof config.commandsPerPattern).toBe("object");
     expect(Array.isArray(config.commandsPerPattern)).toBe(false);
-    expect(Object.keys(config.commandsPerPattern).length).toBe(0);
+    // Falls back to all defaults
+    expect(config.commandsPerPattern[".html.twig"]).toBe("cc twig");
+    expect(config.commandsPerPattern[".php"]).toBe("cr");
   });
 
   it("getCacheClearArgs returns drush cr when no commandsPerPattern", async () => {
