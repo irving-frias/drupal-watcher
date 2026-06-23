@@ -2,6 +2,8 @@ import { existsSync } from "fs";
 import path from "path";
 import { P_ERROR, P_WARN, P_INFO, P_SUCCESS, POSSIBLE_DOCROOTS, cyan, yellow } from "./utils.js";
 
+const PACKAGE_DIR = path.normalize(new URL("../", import.meta.url).pathname);
+
 function getRoot(r) {
   return r || process.cwd();
 }
@@ -19,11 +21,11 @@ function configPath(root) {
 }
 
 function pidPath(root) {
-  return path.join(getRoot(root), ".drupal-watcher.pid");
+  return path.join(root || PACKAGE_DIR, ".drupal-watcher.pid");
 }
 
 function starttimePath(root) {
-  return path.join(getRoot(root), ".drupal-watcher.starttime");
+  return path.join(root || PACKAGE_DIR, ".drupal-watcher.starttime");
 }
 
 export function detectDrupalRoot(root) {
@@ -178,23 +180,20 @@ export async function removePid(root) {
 
 // --- Start time file (for uptime) ---
 export async function writeStarttime(root) {
-  const r = getRoot(root);
-  await Bun.write(starttimePath(r), String(Date.now()));
+  await Bun.write(starttimePath(root), String(Date.now()));
 }
 
 export async function getStarttime(root) {
-  const r = getRoot(root);
-  const file = Bun.file(starttimePath(r));
+  const file = Bun.file(starttimePath(root));
   if (!(await file.exists())) return null;
   const t = (await file.text()).trim();
   return t ? parseInt(t, 10) : null;
 }
 
 export async function removeStarttime(root) {
-  const r = getRoot(root);
   try {
     const { rm } = await import("fs/promises");
-    await rm(starttimePath(r), { force: true });
+    await rm(starttimePath(root), { force: true });
   } catch (e) {
     console.warn(`${P_WARN} Failed to remove starttime file: ${e.message}`);
   }
