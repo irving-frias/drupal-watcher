@@ -368,18 +368,55 @@ async function cmdStart() {
   });
 }
 
+// --- Help ---
+function cmdHelp() {
+  const bold = (s) => `${GREEN}${s}${NC}`;
+  const dim = (s) => `${YELLOW}${s}${NC}`;
+
+  console.log(`${YELLOW}🚀 Drupal Watcher${NC} — Vigila archivos de Drupal y ejecuta drush cr automáticamente`);
+  console.log();
+  console.log(`${BLUE}Uso:${NC}`);
+  console.log(`  vendor/bin/drupal-watcher ${bold("<comando>")} ${dim("[argumentos]")}`);
+  console.log();
+  console.log(`${BLUE}Comandos:${NC}`);
+  console.log(`  ${bold("start")}                   Inicia el watcher (predeterminado)`);
+  console.log(`  ${bold("list")}                    Muestra la configuración actual`);
+  console.log(`  ${bold("add")}    ${dim("<ruta>")}          Añade una ruta a vigilar`);
+  console.log(`  ${bold("remove")} ${dim("<ruta>")}          Elimina una ruta`);
+  console.log(`  ${bold("reset")}                   Restablece las rutas por defecto`);
+  console.log(`  ${bold("help, -h, --help")}        Muestra esta ayuda`);
+  console.log();
+  console.log(`${BLUE}Ejemplos:${NC}`);
+  console.log(`  vendor/bin/drupal-watcher start`);
+  console.log(`  vendor/bin/drupal-watcher add docroot/modules/contrib`);
+  console.log(`  vendor/bin/drupal-watcher remove docroot/modules/contrib`);
+  console.log(`  vendor/bin/drupal-watcher list`);
+  console.log();
+  console.log(`${BLUE}Configuración:${NC} watcher.config.json`);
+  console.log(`${BLUE}Documentación:${NC} README.md`);
+}
+
 // --- Main ---
 async function main() {
   const args = process.argv.slice(2);
-  const command = args[0] || "start";
+  const command = args[0] || "help";
+  const isHelp = !command || command === "help" || command === "--help" || command === "-h";
+
+  if (isHelp) {
+    cmdHelp();
+    return;
+  }
 
   switch (command) {
-    case "list": await cmdList(); break;
-    case "add": await cmdAdd(args[1]); break;
+    case "list":   await cmdList(); break;
+    case "add":    await cmdAdd(args[1]); break;
     case "remove": await cmdRemove(args[1]); break;
-    case "reset": await cmdReset(); break;
-    case "start":
-    default: await cmdStart(); break;
+    case "reset":  await cmdReset(); break;
+    case "start":  await cmdStart(); break;
+    default:
+      console.error(`${RED}❌ Comando desconocido: ${command}${NC}`);
+      console.log(`   Ejecuta ${GREEN}vendor/bin/drupal-watcher help${NC} para ver los comandos disponibles.`);
+      process.exit(1);
   }
 }
 
