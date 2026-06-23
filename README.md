@@ -3,7 +3,6 @@
 > 🚀 Un watcher inteligente para Drupal que vigila tus módulos y temas custom, ejecutando `drush cr` automáticamente al detectar cambios. Soporte nativo para DDEV, Lando y entornos locales.
 
 [![Licencia MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP 8.4+](https://img.shields.io/badge/PHP-8.4+-blueviolet.svg)](https://www.php.net)
 [![Bun](https://img.shields.io/badge/Bun-1.3+-black.svg)](https://bun.sh)
 [![Composer](https://img.shields.io/badge/Composer-ready-brightgreen.svg)](https://getcomposer.org)
 
@@ -55,7 +54,7 @@ Olvídate de ejecutar manualmente `drush cr` cada vez que modificas un archivo. 
 
 ## Requisitos
 
-- **PHP 8.4+** (para el wrapper `phpdot/bun`)
+- **Bun** (instalado globalmente: `curl -fsSL https://bun.sh/install | bash`)
 - **Composer** (gestión de dependencias de PHP)
 - **Drupal** con Drush instalado
 
@@ -92,10 +91,6 @@ composer require irving-frias/drupal-watcher:@dev
 1. Descarga el [ZIP](https://github.com/irving-frias/drupal-watcher/archive/refs/heads/main.zip)
 2. Descomprime en `packages/drupal-watcher-bun/`
 3. Sigue los pasos del Método 2
-
-### Post-instalación
-
-La primera vez que ejecutes el watcher, se descargará automáticamente el binario de Bun (requiere conexión a internet).
 
 ## Comandos
 
@@ -229,11 +224,10 @@ bun build --compile ./vendor/irving-frias/drupal-watcher/bin/drupal-watcher --ou
 
 ### ❌ Error: `command not found: bun`
 
-El wrapper `phpdot/bun` descarga Bun automáticamente. Si ves este error, verifica:
+Bun no está instalado globalmente en tu sistema. Verifica:
 
-1. PHP 8.4+ está instalado
-2. La extensión `ext-curl` está activa
-3. Tienes conexión a internet para la descarga inicial
+1. Bun está instalado: `bun --version`
+2. Si no lo tienes, instálalo con: `curl -fsSL https://bun.sh/install | bash`
 
 ### ❌ Error: `No se encontró Drush`
 
@@ -286,7 +280,7 @@ bun build --compile ./bin/drupal-watcher --outfile ./drupal-watcher
 
 ### ¿Funciona en Windows?
 
-Sí, Bun es multiplataforma. El wrapper `phpdot/bun` detecta automáticamente tu sistema operativo.
+Sí, Bun es multiplataforma. Puedes instalarlo desde [bun.sh](https://bun.sh).
 
 ### ¿Puedo vigilar múltiples proyectos?
 
@@ -319,7 +313,6 @@ Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE](LICENSE) para
 ## Agradecimientos
 
 - [Bun](https://bun.sh) - Por su increíble velocidad
-- [phpdot/bun](https://packagist.org/packages/phpdot/bun) - Por el wrapper para Composer
 - [Drupal](https://www.drupal.org) - Por ser el mejor CMS del mundo
 
 ---

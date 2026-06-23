@@ -7,30 +7,23 @@
     "bin/drupal-watcher"
   ],
   "require": {
-    "php": ">=8.4",
-    "phpdot/bun": "^1.0"
-  },
-  "require-dev": {
-    "symfony/console": "^7.0|^8.0"
+    "php": ">=8.1"
   },
   "scripts": {
-    "post-install-cmd": [
-      "@php -r \"echo '✅ Drupal Watcher instalado. Comandos disponibles:\\n'; echo '  composer watcher:start  - Inicia el watcher\\n'; echo '  composer watcher:list   - Muestra rutas configuradas\\n'; echo '  composer watcher:add   - Añade una nueva ruta\\n'; echo '  composer watcher:remove - Elimina una ruta\\n'; echo '  composer watcher:reset - Restablece rutas por defecto\\n';\""
-    ],
     "watcher:start": [
-      "phpdot/bun/bin/bun run bin/drupal-watcher start"
+      "bun run bin/drupal-watcher start"
     ],
     "watcher:list": [
-      "phpdot/bun/bin/bun run bin/drupal-watcher list"
+      "bun run bin/drupal-watcher list"
     ],
     "watcher:add": [
-      "phpdot/bun/bin/bun run bin/drupal-watcher add"
+      "bun run bin/drupal-watcher add"
     ],
     "watcher:remove": [
-      "phpdot/bun/bin/bun run bin/drupal-watcher remove"
+      "bun run bin/drupal-watcher remove"
     ],
     "watcher:reset": [
-      "phpdot/bun/bin/bun run bin/drupal-watcher reset"
+      "bun run bin/drupal-watcher reset"
     ]
   }
 }

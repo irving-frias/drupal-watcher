@@ -1,201 +1,227 @@
 #!/usr/bin/env bun
 
-import {
-  watch,
-  existsSync,
-  accessSync,
-  constants,
-  readFileSync,
-  writeFileSync,
-} from "fs";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { existsSync, accessSync, constants, readFileSync, writeFileSync } from "fs";
+import { watch } from "fs";
+import { spawn } from "child_process";
 import path from "path";
 
-const execAsync = promisify(exec);
-
-// Colores
 const RED = "\x1b[31m";
 const GREEN = "\x1b[32m";
 const YELLOW = "\x1b[33m";
 const BLUE = "\x1b[34m";
 const NC = "\x1b[0m";
 
-// Archivo de configuración
 const CONFIG_FILE = path.join(process.cwd(), "watcher.config.json");
-
-// Posibles directorios raíz de Drupal
 const POSSIBLE_DOCROOTS = ["docroot", "web", "html", "public", "drupal"];
 
-// --- Función para detectar el directorio raíz de Drupal ---
-function detectDrupalRoot() {
-  const root = process.cwd();
+// --- Memoized caches ---
+let _cachedRoot = null;
+let _cachedEnv = null;
+let _configCache = null;
 
-  // 1. Buscar si alguno de los directorios comunes existe
+function detectDrupalRoot() {
+  if (_cachedRoot !== null) return _cachedRoot;
+  const root = process.cwd();
   for (const dir of POSSIBLE_DOCROOTS) {
     const fullPath = path.join(root, dir);
-    if (existsSync(fullPath)) {
-      // Verificar si tiene una estructura típica de Drupal (core, modules, themes)
-      const corePath = path.join(fullPath, "core");
-      const modulesPath = path.join(fullPath, "modules");
-      const themesPath = path.join(fullPath, "themes");
-
-      if (
-        existsSync(corePath) ||
-        existsSync(modulesPath) ||
-        existsSync(themesPath)
-      ) {
-        return dir;
-      }
+    if (!existsSync(fullPath)) continue;
+    if (existsSync(path.join(fullPath, "core")) ||
+        existsSync(path.join(fullPath, "modules")) ||
+        existsSync(path.join(fullPath, "themes"))) {
+      _cachedRoot = dir;
+      return dir;
     }
   }
-
-  // 2. Si no encuentra, devolver null
+  _cachedRoot = null;
   return null;
 }
 
-// --- Función para obtener rutas completas ---
-function getFullPath(relativePath) {
-  const drupalRoot = detectDrupalRoot();
-  if (!drupalRoot) {
-    return null;
-  }
-  return path.join(process.cwd(), drupalRoot, relativePath);
+function detectEnvironment() {
+  if (_cachedEnv !== null) return _cachedEnv;
+  const root = process.cwd();
+  if (existsSync(path.join(root, ".ddev"))) _cachedEnv = "ddev";
+  else if (existsSync(path.join(root, ".lando.yml")) || existsSync(path.join(root, ".lando"))) _cachedEnv = "lando";
+  else _cachedEnv = "local";
+  return _cachedEnv;
 }
 
-// --- Configuración por defecto (con detección dinámica) ---
+// --- Config ---
 function getDefaultConfig() {
   const drupalRoot = detectDrupalRoot() || "docroot";
   return {
     routes: [`${drupalRoot}/modules/custom`, `${drupalRoot}/themes/custom`],
     patterns: [".html.twig", ".inc", ".yml", ".module", ".theme"],
+    excludePatterns: [],
     debounce: 800,
     drushCmd: null,
-    drupalRoot: drupalRoot, // Guardamos el root detectado
+    drushCommand: "cr",
+    drushArgs: [],
+    postClearCommands: [],
+    drupalRoot,
   };
 }
 
-// --- Utilidades de configuración ---
 function loadConfig() {
+  if (_configCache) return _configCache;
   if (!existsSync(CONFIG_FILE)) {
-    // Crear archivo con config por defecto
-    const defaultConfig = getDefaultConfig();
-    writeFileSync(CONFIG_FILE, JSON.stringify(defaultConfig, null, 2));
-    return { ...defaultConfig };
+    const def = getDefaultConfig();
+    writeFileSync(CONFIG_FILE, JSON.stringify(def, null, 2));
+    _configCache = { ...def };
+    return _configCache;
   }
   try {
     const raw = readFileSync(CONFIG_FILE, "utf-8");
     const config = JSON.parse(raw);
-    // Si no tiene drupalRoot, intentar detectarlo
     if (!config.drupalRoot) {
-      const detectedRoot = detectDrupalRoot();
-      if (detectedRoot) {
-        config.drupalRoot = detectedRoot;
-        // Actualizar rutas si usan el root antiguo
-        config.routes = config.routes.map((route) => {
-          // Si la ruta no empieza con el root detectado, intentar actualizarla
-          const parts = route.split("/");
-          if (
-            parts.length > 0 &&
-            POSSIBLE_DOCROOTS.includes(parts[0]) &&
-            parts[0] !== detectedRoot
-          ) {
-            return route.replace(parts[0], detectedRoot);
+      const detected = detectDrupalRoot();
+      if (detected) {
+        config.drupalRoot = detected;
+        config.routes = config.routes.map(r => {
+          const p = r.split("/");
+          if (p.length > 0 && POSSIBLE_DOCROOTS.includes(p[0]) && p[0] !== detected) {
+            return r.replace(p[0], detected);
           }
-          return route;
+          return r;
         });
         saveConfig(config);
       }
     }
-    return { ...getDefaultConfig(), ...config };
-  } catch (error) {
-    console.error(
-      `${RED}Error al leer el archivo de configuración. Usando defaults.${NC}`,
-    );
-    const defaultConfig = getDefaultConfig();
-    return { ...defaultConfig };
+    _configCache = { ...getDefaultConfig(), ...config };
+    return _configCache;
+  } catch {
+    console.error(`${RED}Error al leer configuración. Usando defaults.${NC}`);
+    const def = getDefaultConfig();
+    _configCache = { ...def };
+    return _configCache;
   }
 }
 
 function saveConfig(config) {
   writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  _configCache = null;
 }
 
-// --- Detección de entorno (DDEV/Lando) ---
-function detectEnvironment() {
-  const root = process.cwd();
-  if (existsSync(path.join(root, ".ddev"))) return "ddev";
-  if (
-    existsSync(path.join(root, ".lando.yml")) ||
-    existsSync(path.join(root, ".lando"))
-  )
-    return "lando";
-  return "local";
-}
-
+// --- Drush resolution ---
 function getDrushCommand(config) {
   if (config.drushCmd) return config.drushCmd;
   const env = detectEnvironment();
   if (env === "ddev") return "ddev drush";
   if (env === "lando") return "lando drush";
-  // Buscar en vendor/bin o bin
   const vendorDrush = path.join(process.cwd(), "vendor/bin/drush");
   const binDrush = path.join(process.cwd(), "bin/drush");
   if (existsSync(vendorDrush)) {
-    try {
-      accessSync(vendorDrush, constants.X_OK);
-      return vendorDrush;
-    } catch {}
+    try { accessSync(vendorDrush, constants.X_OK); return vendorDrush; } catch {}
   }
   if (existsSync(binDrush)) {
-    try {
-      accessSync(binDrush, constants.X_OK);
-      return binDrush;
-    } catch {}
+    try { accessSync(binDrush, constants.X_OK); return binDrush; } catch {}
   }
-  return "drush"; // fallback
+  return "drush";
 }
 
-// --- Comando: list ---
+function getDrushSpawnArgs(config) {
+  const cmdStr = getDrushCommand(config);
+  const parts = cmdStr.split(/\s+/);
+  const args = [...parts.slice(1)];
+  if (config.drushCommand) args.push(config.drushCommand);
+  if (config.drushArgs?.length > 0) args.push(...config.drushArgs);
+  return { cmd: parts[0], args };
+}
+
+// --- Adaptive debounce with change accumulation ---
+let debounceTimer = null;
+let changeAccumulator = new Map();
+
+function resetDebounce() {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  changeAccumulator.clear();
+}
+
+async function runCacheClear(drushBase, drushArgsArray, postClearCommands) {
+  const files = Array.from(changeAccumulator.keys());
+  changeAccumulator.clear();
+  if (files.length === 0) return;
+
+  const suffix = files.length > 1 ? ` (${files.length} archivos)` : "";
+  console.log(`${YELLOW}🔄 Limpiando caché...${suffix}${NC}`);
+
+  try {
+    const proc = spawn(drushBase, drushArgsArray, { stdio: ["ignore", "pipe", "pipe"] });
+
+    let stderr = "";
+    proc.stderr.on("data", d => { stderr += d.toString(); });
+
+    const exitCode = await new Promise(resolve => {
+      proc.on("close", resolve);
+      proc.on("error", () => resolve(1));
+    });
+
+    if (exitCode === 0) {
+      console.log(`${GREEN}✅ Caché limpiada correctamente.${NC}`);
+    } else {
+      console.error(`${RED}❌ Error drush (exit ${exitCode}):${NC} ${stderr || "drush no disponible"}`);
+    }
+
+    for (const cmd of postClearCommands) {
+      console.log(`${YELLOW}⚡ ${cmd}${NC}`);
+      const postProc = spawn("sh", ["-c", cmd], { stdio: "inherit" });
+      await new Promise(resolve => {
+        postProc.on("close", resolve);
+        postProc.on("error", resolve);
+      });
+    }
+  } catch (error) {
+    console.error(`${RED}❌ Error:${NC} ${error.message}`);
+  }
+}
+
+function scheduleCacheClear(config) {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  const { cmd, args } = getDrushSpawnArgs(config);
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    runCacheClear(cmd, args, config.postClearCommands || []);
+  }, config.debounce || 800);
+}
+
+// --- Commands ---
 function cmdList() {
   const config = loadConfig();
-  const drushCmd = getDrushCommand(config);
+  const drushSpawn = getDrushSpawnArgs(config);
   const drupalRoot = config.drupalRoot || detectDrupalRoot() || "no detectado";
-  console.log(`${BLUE}📋 Configuración actual del watcher:${NC}`);
-  console.log(`  ${YELLOW}Directorio raíz Drupal:${NC} ${drupalRoot}`);
+
+  console.log(`${BLUE}📋 Configuración del watcher:${NC}`);
+  console.log(`  ${YELLOW}Directorio raíz:${NC} ${drupalRoot}`);
+  console.log(`  ${YELLOW}Entorno:${NC} ${detectEnvironment()}`);
   console.log(`  ${YELLOW}Rutas vigiladas:${NC}`);
-  config.routes.forEach((r) => console.log(`    - ${r}`));
-  console.log(
-    `  ${YELLOW}Patrones de archivo:${NC} ${config.patterns.join(", ")}`,
-  );
+  config.routes.forEach(r => console.log(`    - ${r}`));
+  console.log(`  ${YELLOW}Patrones:${NC} ${config.patterns.join(", ")}`);
+  if (config.excludePatterns?.length > 0) {
+    console.log(`  ${YELLOW}Excluidos:${NC} ${config.excludePatterns.join(", ")}`);
+  }
   console.log(`  ${YELLOW}Debounce:${NC} ${config.debounce}ms`);
-  console.log(`  ${YELLOW}Comando Drush:${NC} ${drushCmd}`);
+  console.log(`  ${YELLOW}Drush:${NC} ${drushSpawn.cmd} ${drushSpawn.args.join(" ")}`);
+  if (config.postClearCommands?.length > 0) {
+    console.log(`  ${YELLOW}Post-clear:${NC} ${config.postClearCommands.join("; ")}`);
+  }
 }
 
-// --- Comando: add ---
 function cmdAdd(newRoute) {
   if (!newRoute) {
-    console.error(
-      `${RED}❌ Debes especificar una ruta. Ejemplo: composer watcher:add modules/contrib${NC}`,
-    );
+    console.error(`${RED}❌ Especifica una ruta. Ej: composer watcher:add modules/contrib${NC}`);
     process.exit(1);
   }
   const config = loadConfig();
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
   if (!drupalRoot) {
-    console.error(
-      `${RED}❌ No se pudo detectar el directorio raíz de Drupal.${NC}`,
-    );
+    console.error(`${RED}❌ No se pudo detectar el directorio raíz de Drupal.${NC}`);
     process.exit(1);
   }
 
-  // Normalizar ruta
   let normalized = path.normalize(newRoute).replace(/^\.\//, "");
-  // Si la ruta no empieza con el root, añadirlo
-  if (
-    !normalized.startsWith(drupalRoot) &&
-    !POSSIBLE_DOCROOTS.some((r) => normalized.startsWith(r))
-  ) {
+  if (!normalized.startsWith(drupalRoot) && !POSSIBLE_DOCROOTS.some(r => normalized.startsWith(r))) {
     normalized = path.join(drupalRoot, normalized);
   }
 
@@ -204,9 +230,7 @@ function cmdAdd(newRoute) {
     return;
   }
 
-  // Verificar que existe
-  const fullPath = path.join(process.cwd(), normalized);
-  if (!existsSync(fullPath)) {
+  if (!existsSync(path.join(process.cwd(), normalized))) {
     console.error(`${RED}❌ La ruta no existe: ${normalized}${NC}`);
     process.exit(1);
   }
@@ -217,12 +241,9 @@ function cmdAdd(newRoute) {
   cmdList();
 }
 
-// --- Comando: remove ---
 function cmdRemove(routeToRemove) {
   if (!routeToRemove) {
-    console.error(
-      `${RED}❌ Debes especificar una ruta. Ejemplo: composer watcher:remove modules/contrib${NC}`,
-    );
+    console.error(`${RED}❌ Especifica una ruta. Ej: composer watcher:remove modules/contrib${NC}`);
     process.exit(1);
   }
   const config = loadConfig();
@@ -239,131 +260,126 @@ function cmdRemove(routeToRemove) {
   cmdList();
 }
 
-// --- Comando: reset ---
 function cmdReset() {
-  const defaultConfig = getDefaultConfig();
   const config = loadConfig();
-  config.routes = [...defaultConfig.routes];
-  config.drupalRoot = defaultConfig.drupalRoot;
+  const def = getDefaultConfig();
+  config.routes = [...def.routes];
+  config.drupalRoot = def.drupalRoot;
   saveConfig(config);
-  console.log(`${GREEN}✅ Rutas restablecidas a los valores por defecto.${NC}`);
+  console.log(`${GREEN}✅ Rutas restablecidas a valores por defecto.${NC}`);
   cmdList();
 }
 
-// --- Función para limpiar caché con debounce ---
-let timeoutId = null;
+// --- Start ---
+const watchers = [];
 
-async function clearCache(drushCmd, debounce) {
-  if (timeoutId) {
-    clearTimeout(timeoutId);
-    timeoutId = null;
-  }
-
-  timeoutId = setTimeout(async () => {
-    try {
-      console.log(`${YELLOW}🔄 Limpiando caché...${NC}`);
-      const { stderr } = await execAsync(`"${drushCmd}" cr`);
-      if (stderr) {
-        console.error(`${RED}⚠️ Drush advierte:${NC}`, stderr);
-      } else {
-        console.log(`${GREEN}✅ Caché limpiada correctamente.${NC}`);
-      }
-    } catch (error) {
-      console.error(`${RED}❌ Error al ejecutar drush:${NC}`, error.message);
-    }
-    timeoutId = null;
-  }, debounce || 800);
-}
-
-// --- Comando: start ---
 function cmdStart() {
-  console.log(`${YELLOW}🚀 Iniciando Drupal Watcher (Bun + Composer)${NC}`);
+  console.log(`${YELLOW}🚀 Iniciando Drupal Watcher${NC}`);
   const config = loadConfig();
-  const drushCmd = getDrushCommand(config);
   const drupalRoot = config.drupalRoot || detectDrupalRoot();
 
   if (!drupalRoot) {
-    console.error(
-      `${RED}❌ No se pudo detectar el directorio raíz de Drupal.${NC}`,
-    );
-    console.error(
-      `${YELLOW}   Estructuras soportadas: ${POSSIBLE_DOCROOTS.join(", ")}${NC}`,
-    );
-    console.error(
-      `${YELLOW}   O define manualmente en ${CONFIG_FILE} la propiedad 'drupalRoot'.${NC}`,
-    );
+    console.error(`${RED}❌ No se pudo detectar el directorio raíz de Drupal.${NC}`);
+    console.error(`${YELLOW}   Estructuras soportadas: ${POSSIBLE_DOCROOTS.join(", ")}${NC}`);
     process.exit(1);
   }
 
-  console.log(`${GREEN}📁 Directorio raíz detectado:${NC} ${drupalRoot}`);
-  console.log(`${GREEN}🔧 Usando comando:${NC} ${drushCmd}`);
-  console.log(`${GREEN}👀 Vigilando rutas:${NC}`);
+  const { cmd: drushBase, args: drushArgs } = getDrushSpawnArgs(config);
+  const drushCmdStr = getDrushCommand(config);
 
+  console.log(`${GREEN}📁 Directorio raíz:${NC} ${drupalRoot}`);
+  console.log(`${GREEN}🌐 Entorno:${NC} ${detectEnvironment()}`);
+  console.log(`${GREEN}🔧 Drush:${NC} ${drushCmdStr} ${config.drushCommand}`);
+
+  // Health check (async, no bloquea)
+  const healthProc = spawn(drushBase, [...drushArgs.slice(0, -1), "status", "--format=json"], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let healthOut = "";
+  healthProc.stdout.on("data", d => { healthOut += d.toString(); });
+  healthProc.on("close", code => {
+    if (code !== 0) {
+      console.log(`${YELLOW}⚠️ Drush no responde. El watcher iniciará igualmente.${NC}`);
+    }
+  });
+
+  // Show routes
+  console.log(`${GREEN}👀 Vigilando rutas:${NC}`);
   let hasValidRoute = false;
-  config.routes.forEach((route) => {
-    const fullPath = path.join(process.cwd(), route);
-    if (!existsSync(fullPath)) {
+  const rootPath = path.join(process.cwd(), drupalRoot);
+
+  config.routes.forEach(route => {
+    if (!existsSync(path.join(process.cwd(), route))) {
       console.log(`${YELLOW}⚠️ Ruta no existe (se omite):${NC} ${route}`);
       return;
     }
     hasValidRoute = true;
     console.log(`  - ${route}`);
-
-    // Iniciar watcher en esta ruta
-    watch(fullPath, { recursive: true }, (eventType, filename) => {
-      if (!filename) return;
-      const shouldProcess = config.patterns.some((pattern) =>
-        filename.endsWith(pattern),
-      );
-      if (!shouldProcess) return;
-      console.log(
-        `${GREEN}📝 Cambio detectado:${NC} ${path.basename(filename)}`,
-      );
-      clearCache(drushCmd, config.debounce);
-    });
   });
 
   if (!hasValidRoute) {
     console.error(`${RED}❌ Ninguna de las rutas configuradas existe.${NC}`);
-    console.error(
-      `${YELLOW}   Añade rutas válidas con 'composer watcher:add'${NC}`,
-    );
+    console.error(`${YELLOW}   Añade rutas con 'composer watcher:add'${NC}`);
     process.exit(1);
   }
 
-  console.log(
-    `${GREEN}✅ Watcher activo. Esperando cambios... (Ctrl+C para salir)${NC}`,
-  );
+  // Single recursive watcher on drupal root
+  const routeSuffixes = config.routes.map(r => r.replace(`${drupalRoot}/`, "").replace(drupalRoot, ""));
 
-  // Manejar salida limpia
+  const watcher = watch(rootPath, { recursive: true }, (eventType, filename) => {
+    if (!filename) return;
+
+    const normalized = path.normalize(filename);
+
+    // Check if file is in one of the watched routes
+    if (!routeSuffixes.some(suffix => normalized.startsWith(suffix))) return;
+
+    // Check pattern match
+    if (!config.patterns.some(p => filename.endsWith(p))) return;
+
+    // Check exclude patterns
+    if (config.excludePatterns?.some(p => filename.endsWith(p))) return;
+
+    // Track change
+    if (!changeAccumulator.has(filename)) {
+      const displayName = path.basename(filename);
+      const total = changeAccumulator.size + 1;
+      console.log(`${GREEN}📝 ${displayName}${total > 1 ? ` (${total})` : ""}${NC}`);
+    }
+    changeAccumulator.set(filename, Date.now());
+    scheduleCacheClear(config);
+  });
+
+  watcher.on("error", err => {
+    console.error(`${RED}❌ Error en watcher:${NC} ${err.message}`);
+  });
+
+  watchers.push(watcher);
+
+  console.log(`${GREEN}✅ Watcher activo. Esperando cambios... (Ctrl+C para salir)${NC}`);
+
   process.on("SIGINT", () => {
     console.log(`\n${YELLOW}🛑 Deteniendo watcher...${NC}`);
+    resetDebounce();
+    for (const w of watchers) {
+      try { w.close(); } catch {}
+    }
     process.exit(0);
   });
 }
 
-// --- Main: despachar comandos ---
+// --- Main ---
 function main() {
   const args = process.argv.slice(2);
   const command = args[0] || "start";
 
   switch (command) {
-    case "list":
-      cmdList();
-      break;
-    case "add":
-      cmdAdd(args[1]);
-      break;
-    case "remove":
-      cmdRemove(args[1]);
-      break;
-    case "reset":
-      cmdReset();
-      break;
+    case "list": cmdList(); break;
+    case "add": cmdAdd(args[1]); break;
+    case "remove": cmdRemove(args[1]); break;
+    case "reset": cmdReset(); break;
     case "start":
-    default:
-      cmdStart();
-      break;
+    default: cmdStart(); break;
   }
 }
 

@@ -1,0 +1,4 @@
+node_modules/
+dist/
+watcher.config.json
+*.log
