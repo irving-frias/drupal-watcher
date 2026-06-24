@@ -1,0 +1,97 @@
+package tui
+
+import (
+	"time"
+
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/irving-frias/drupal-watcher/internal/watcher"
+)
+
+const eventBufferSize = 100
+
+type eventLine struct {
+	Timestamp string
+	Content   string
+	Style     lipgloss.Style
+}
+
+type Model struct {
+	Watcher  *watcher.Handle
+	status   statusLine
+	events   []eventLine
+	eventCap int
+	viewport viewport.Model
+	input    textinput.Model
+	help     help.Model
+	ready    bool
+	width    int
+	height   int
+}
+
+type statusLine struct {
+	PID        int
+	Uptime     string
+	Changes    int64
+	Clears     int64
+	WatchCount int64
+	AllocMB    float64
+	Running    bool
+}
+
+func NewModel(w *watcher.Handle) *Model {
+	ti := textinput.New()
+	ti.Placeholder = "Type a command..."
+	ti.Focus()
+	ti.CharLimit = 256
+	ti.Width = 50
+
+	return &Model{
+		Watcher:  w,
+		events:   make([]eventLine, 0, eventBufferSize),
+		eventCap: eventBufferSize,
+		input:    ti,
+		help:     help.New(),
+	}
+}
+
+func (m *Model) Init() tea.Cmd {
+	return tea.Batch(
+		tickCmd(),
+		listenForEvents(m.Watcher),
+		textinput.Blink,
+	)
+}
+
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg(t)
+	})
+}
+
+func listenForEvents(w *watcher.Handle) tea.Cmd {
+	return func() tea.Msg {
+		if w.EventCh == nil {
+			return nil
+		}
+		select {
+		case evt, ok := <-w.EventCh:
+			if !ok {
+				return nil
+			}
+			return watcherEventMsg{Event: evt}
+		default:
+			return nil
+		}
+	}
+}
+
+func (m *Model) pushEvent(line eventLine) {
+	m.events = append(m.events, line)
+	if len(m.events) > m.eventCap {
+		m.events = m.events[1:]
+	}
+}

@@ -12,8 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/drush"
+	"github.com/irving-frias/drupal-watcher/internal/tui"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
 )
@@ -73,12 +75,8 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	}
 
 	// Handle dotfiles
-	noDotfiles := false
 	if nd, ok := flags["no-dotfiles"].(bool); ok && nd {
-		noDotfiles = true
-	}
-	if noDotfiles {
-		// TODO: implement dotfile exclusion via watcher config
+		cfg.ExcludePatterns = append(cfg.ExcludePatterns, "/.")
 	}
 
 	// Start watcher
@@ -242,6 +240,9 @@ func stdinReader(ctx context.Context, cmdCh chan<- string) {
 func sanitizeRoute(route string) string {
 	cleaned := filepath.Clean(route)
 	if !filepath.IsAbs(cleaned) {
+		return ""
+	}
+	if info, err := os.Stat(cleaned); err != nil || !info.IsDir() {
 		return ""
 	}
 	return cleaned
@@ -504,6 +505,27 @@ func CmdRestart(root string, flags map[string]interface{}, mgr *config.Manager) 
 	}
 	time.Sleep(500 * time.Millisecond)
 	return CmdStart(context.Background(), root, flags, mgr)
+}
+
+func CmdTui(root string, mgr *config.Manager) error {
+	cfg, err := mgr.LoadConfig(root)
+	if err != nil {
+		return fmt.Errorf("%w", err)
+	}
+
+	cfg.Debounce = 200
+	eventCh := make(chan watcher.EventMsg, 100)
+	h, err := watcher.StartWithEvents(cfg, eventCh)
+	if err != nil {
+		return fmt.Errorf("failed to start watcher: %w", err)
+	}
+	defer watcher.Stop(h)
+
+	p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func CmdHelp() {

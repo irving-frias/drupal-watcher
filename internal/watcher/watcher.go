@@ -36,13 +36,34 @@ type Stats struct {
 	TotalDebounceMs atomic.Int64
 }
 
+type EventType int
+
+const (
+	EventChange EventType = iota
+	EventDrush
+	EventError
+)
+
+type EventMsg struct {
+	Type      EventType
+	Timestamp time.Time
+	File      string
+	Changes   int
+	Commands  string
+	ExitCode  int
+	Duration  time.Duration
+	Error     error
+}
+
 type Handle struct {
 	Watcher    *fsnotify.Watcher
 	StopCh     chan struct{}
+	EventCh    chan EventMsg
 	LogFile    *os.File
 	Stats      *Stats
 	Config     Config
 	WatchCount atomic.Int64
+	wg         sync.WaitGroup
 }
 
 var (
@@ -66,7 +87,15 @@ var dirsSkippedByDefault = []string{
 	"fonts",
 }
 
+func StartWithEvents(cfg Config, eventCh chan EventMsg) (*Handle, error) {
+	return start(cfg, nil, eventCh)
+}
+
 func Start(cfg Config, logFile *os.File) (*Handle, error) {
+	return start(cfg, logFile, nil)
+}
+
+func start(cfg Config, logFile *os.File, eventCh chan EventMsg) (*Handle, error) {
 	fsnWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create watcher: %w", err)
@@ -75,6 +104,7 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	h := &Handle{
 		Watcher: fsnWatcher,
 		StopCh:  make(chan struct{}),
+		EventCh: eventCh,
 		LogFile: logFile,
 		Stats:   &Stats{StartTime: time.Now()},
 		Config:  cfg,
@@ -114,7 +144,9 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	var timer *time.Timer
 	var debounceMu sync.Mutex
 
+	h.wg.Add(1)
 	go func() {
+		defer h.wg.Done()
 		for {
 			select {
 			case event, ok := <-fsnWatcher.Events:
@@ -181,6 +213,7 @@ func Stop(h *Handle) {
 	if h.LogFile != nil {
 		h.LogFile.Close()
 	}
+	h.wg.Wait()
 }
 
 func processChange(h *Handle) {
@@ -215,6 +248,21 @@ func processChange(h *Handle) {
 	}
 	fmt.Printf("%s %s\n", utils.Timestamp(), msg)
 
+	// Send event to TUI if connected
+	if h.EventCh != nil {
+		select {
+		case h.EventCh <- EventMsg{
+			Type:      EventChange,
+			Timestamp: time.Now(),
+			File:      dispFile,
+			Changes:   int(changes),
+		}:
+		default:
+		}
+	}
+
+	cmdStr := strings.Join(cmds, " + ")
+
 	// Batch all cache clears into a single drush invocation
 	result := drush.RunCacheClears(h.Config, cmds)
 	h.Stats.Clears.Add(1)
@@ -224,13 +272,29 @@ func processChange(h *Handle) {
 		status = utils.P_ERROR
 	}
 	fmt.Printf("%s %s drush %s (%v, exit %d)\n",
-		utils.Timestamp(), status, strings.Join(cmds, " + "), result.Duration, result.ExitCode)
+		utils.Timestamp(), status, cmdStr, result.Duration, result.ExitCode)
 
 	if result.Stderr != "" {
 		fmt.Fprintf(os.Stderr, "  %s\n", utils.Dim(strings.TrimSpace(result.Stderr)))
 	}
 	if result.Stdout != "" && result.Stdout != "{}" {
 		fmt.Printf("  %s\n", utils.Dim(strings.TrimSpace(result.Stdout)))
+	}
+
+	// Send event to TUI if connected
+	if h.EventCh != nil {
+		select {
+		case h.EventCh <- EventMsg{
+			Type:      EventDrush,
+			Timestamp: time.Now(),
+			File:      dispFile,
+			Changes:   int(changes),
+			Commands:  cmdStr,
+			ExitCode:  result.ExitCode,
+			Duration:  result.Duration,
+		}:
+		default:
+		}
 	}
 
 	postClear := h.Config.GetPostClearCommands()
