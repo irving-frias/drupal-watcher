@@ -1,6 +1,6 @@
 # Drupal Watcher
 
-> 🚀 A smart file watcher for Drupal that monitors your custom modules and themes, automatically running `drush cr` when changes are detected.
+> 🚀 A smart file watcher for Drupal that monitors your custom modules and themes, automatically running `drush cr` (or lighter per-pattern cache clears) when changes are detected.
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-1.3+-black.svg)](https://bun.sh)
@@ -70,10 +70,10 @@ Forget running `drush cr` manually every time you edit a file. **Drupal Watcher*
 - Low memory footprint
 
 ### Built with Bun
-- Modular JavaScript architecture (`src/`)
-- Zero external dependencies (Bun only)
+- Modular **TypeScript** architecture (`src/`)
+- Zero external dependencies (Bun + `@types/bun` only)
 - Compilable to standalone binary
-- Singleton PID file prevents duplicate watchers
+- Singleton PID file in package root prevents duplicate watchers
 - Real-time stats on stop
 
 ## Requirements
@@ -327,25 +327,26 @@ Or in `watcher.config.json`:
 ## Architecture
 
 ```
-bin/drupal-watcher    # Thin entry point (shebang + import main)
+bin/drupal-watcher.ts  # Thin entry point (shebang + import main)
 src/
-  main.js            # Argument parsing and dispatch
-  config.js          # Config load/save, Drupal root detection, PID management
-  commands.js        # All CLI commands (start, list, status, add, remove, reset, help)
-  drush.js           # Drush resolution, health check, execution
-  watcher.js         # File watching, debounce, PID enforcement, stats
-  utils.js           # Color constants, Drupal paths, helpers
+  main.ts            # Argument parsing, dispatch, global error handlers
+  config.ts          # Config load/save, Drupal root detection, PID management
+  commands.ts        # All CLI commands (start, list, status, add, remove, reset, help)
+  drush.ts           # Drush resolution, health check, execution
+  watcher.ts         # File watching, debounce, PID enforcement, stats
+  utils.ts           # Color helpers, Drupal paths, formatting
+  types.ts           # Shared TypeScript interfaces
 test/
-  config.test.ts     # Unit tests (21 tests, see below)
+  config.test.ts     # Unit tests (46 tests, see below)
 ```
 
 ### Key design decisions
 
+- **TypeScript**: Bun runs `.ts` directly — no build step needed. Use `bun run typecheck` to verify types.
 - **`root` parameter**: Every function accepts an optional `root` for testability (defaults to `process.cwd()`)
 - **Per-root cache**: `_rootCache` Map caches detection results; use `invalidateConfigCache(root)` to reset
-- **PID singleton**: `.drupal-watcher.pid` prevents multiple watcher instances
-- **No TypeScript**: Pure JS avoids a build step for the Composer distribution
-- **import with `.js` extension**: ESM requires explicit file extensions
+- **PID / starttime**: Stored in the package directory (not the project root) to avoid polluting the Drupal project
+- **Per-pattern cache clears**: Map file extensions to specific `drush cc` commands instead of blanket `cr`
 
 ## Examples
 
@@ -409,7 +410,7 @@ Automatically run `drush cex` after each change:
 
 ```bash
 # From Composer package
-bun build --compile ./vendor/irving-frias/drupal-watcher/bin/drupal-watcher --outfile ./drupal-watcher
+bun build --compile ./vendor/irving-frias/drupal-watcher/bin/drupal-watcher.ts --outfile ./drupal-watcher
 
 # Or from local repo
 bun run build          # current platform
@@ -501,7 +502,7 @@ Bun is **10-30× faster** for installs and **8× faster** for cold starts. It's 
 Yes. Compile to a standalone binary:
 
 ```bash
-bun build --compile ./bin/drupal-watcher --outfile ./drupal-watcher
+bun build --compile ./bin/drupal-watcher.ts --outfile ./drupal-watcher
 ./drupal-watcher start
 ```
 
@@ -530,8 +531,9 @@ bun install
 ### Testing
 
 ```bash
-bun test              # 21 tests
+bun test              # 46 tests
 bun run test:watch    # watch mode
+bun run typecheck     # TypeScript type checking (noEmit)
 ```
 
 ### Building
