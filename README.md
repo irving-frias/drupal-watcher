@@ -1,73 +1,62 @@
 # Drupal Watcher
 
-File watcher for Drupal development. Monitors custom modules and themes, auto-runs `drush` cache clears on file changes. Supports DDEV, Lando, and local environments.
+File watcher for Drupal development. Monitors custom modules and themes and auto-runs `drush` cache clears whenever a file changes. Works with DDEV, Lando, and any local environment.
 
 ## Requirements
 
-- **Go 1.21+** to compile from source (optional — download a [pre-built binary](https://github.com/irving-frias/drupal-watcher/releases) instead)
+- **PHP 8.1+** (for Composer-based install)
 - **Drush** installed in your Drupal project
 
-## Installation
+> Go is **not required**. The binary is auto-downloaded during `composer install`.
 
-### Via Composer
+## Installation
 
 ```bash
 composer require irving-frias/drupal-watcher
 vendor/bin/drupal-watcher help
 ```
 
-The binary compiles automatically on `composer install` (requires Go). If Go is not available, [download a pre-built binary](https://github.com/irving-frias/drupal-watcher/releases) and place it at `vendor/bin/drupal-watcher-go`.
+On `composer install` the correct binary for your OS/architecture is downloaded from GitHub Releases and placed at `vendor/irving-frias/drupal-watcher/bin/drupal-watcher-go`. No compilation needed.
 
-### Standalone binary
+### Manual download
 
-```bash
-go install github.com/irving-frias/drupal-watcher/cmd/drupal-watcher@latest
-```
-
-Or download from [GitHub Releases](https://github.com/irving-frias/drupal-watcher/releases).
-
-### From source
-
-```bash
-git clone https://github.com/irving-frias/drupal-watcher.git
-cd drupal-watcher
-go build -o drupal-watcher ./cmd/drupal-watcher
-./drupal-watcher help
-```
+Download the binary for your platform from [GitHub Releases](https://github.com/irving-frias/drupal-watcher/releases), make it executable, and run it from your Drupal project root.
 
 ## Quick Start
 
 ```bash
 cd /path/to/drupal/project
-drupal-watcher start
+vendor/bin/drupal-watcher start
 ```
 
-A `watcher.config.json` is auto-generated with sensible defaults. Edit it to customize.
+A `watcher.config.json` is auto-created with sensible defaults. Edit it to customize routes, patterns, and cache clear commands.
 
 ## Commands
 
-| Command   | Description                                   |
-|-----------|-----------------------------------------------|
-| start     | Start watching file changes                   |
-| stop      | Stop the watcher and clear PID                |
-| restart   | Restart the watcher                           |
-| status    | Show running status and uptime                |
-| list      | Display current configuration                 |
-| add       | Add route and/or pattern to watch            |
-| remove    | Remove route and/or pattern                  |
-| reset     | Clear stale PID (if process crashed)          |
-| help      | Show usage information                        |
+| Command   | Description                            |
+|-----------|----------------------------------------|
+| start     | Start watching file changes            |
+| status    | Show running status and uptime         |
+| list      | Display current configuration          |
+| add       | Add route and/or pattern to watch      |
+| remove    | Remove route and/or pattern            |
+| restart   | Restart the watcher                    |
+| stop      | Stop the watcher and clear PID         |
+| reset     | Clear stale PID (if process crashed)   |
+| help      | Show usage information                 |
 
 ## Options
 
-- `--debounce <ms>` — Debounce interval (default: 800ms)
-- `--no-dotfiles` — Ignore dotfiles (not yet implemented)
-- `--log-file <path>` — Write logs to file
-- `--config <path>` — Custom config file path
+| Flag                    | Description                        |
+|-------------------------|------------------------------------|
+| `--debounce <ms>`       | Debounce interval (default: 800ms) |
+| `--log-file <path>`     | Write logs to file                 |
+| `--config <path>`       | Custom config file path            |
+| `--no-dotfiles`         | Ignore dotfiles                    |
 
 ## Configuration
 
-The config file `watcher.config.json` is in your project root:
+`watcher.config.json` sits in your Drupal project root:
 
 ```json
 {
@@ -87,29 +76,57 @@ The config file `watcher.config.json` is in your project root:
 }
 ```
 
+**commandsPerPattern** maps file extensions to drush commands. The most specific match wins (e.g., `.info.yml` matches before `.yml`). Falls back to `cr` if no pattern matches.
+
+## How it works
+
+1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
+2. Uses `fsnotify` to watch all subdirectories under the configured routes
+3. When a file changes, debounces (default 800ms) and runs the corresponding drush command
+4. Drush output and post-clear commands are printed to the terminal
+5. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
+
 ## Architecture
 
 ```
-bin/drupal-watcher     → Shell launcher (builds if needed, then execs)
-cmd/drupal-watcher/    → Entry point (flag parsing + dispatch)
+bin/drupal-watcher      → Shell launcher (downloads binary if missing)
+cmd/drupal-watcher/     → Entry point, flag parsing, command dispatch
 internal/
-  config/              → Config load/save, Drupal root detection, PID mgmt
-  drush/               → Drush command resolution and execution
-  watcher/             → fsnotify-based file watcher with debounce
-  cli/                 → Command implementations (start, list, status, etc.)
-  utils/               → Color helpers, shared constants
+  config/               → Config management, Drupal root detection, PID files
+  drush/                → Drush resolution, execution, health checks
+  watcher/              → fsnotify file watcher with debounce
+  cli/                  → Command implementations
+  utils/                → Color helpers and shared utilities
 ```
 
-## Development
+## Drupal root detection
+
+The watcher scans for `docroot/`, `web/`, `public/`, or `html/` directories containing `core/`, `modules/`, `themes/`, or `index.php`. The detected root is stored in the config file.
+
+## Cache clear per pattern
+
+Different file types run different drush commands:
+
+| Extension      | Drush command       |
+|----------------|---------------------|
+| `.html.twig`   | `cc twig`           |
+| `.theme`       | `cc theme-registry` |
+| `.module`      | `cc plugin`         |
+| `.inc`         | `cc plugin`         |
+| `.yml`         | `cc plugin`         |
+| `.info.yml`    | `cr`                |
+| `.services.yml`| `cr`                |
+| `.php`         | `cc plugin`         |
+
+## Development (requires Go)
 
 ```bash
-go test ./...
-go test -count=1 ./...   # Force re-run (no cache)
+go test -count=1 ./...
 go vet ./...
 go build -o drupal-watcher ./cmd/drupal-watcher
 ```
 
-## Cross-compilation
+### Cross-compilation
 
 ```bash
 GOOS=linux   GOARCH=amd64 go build -o drupal-watcher-linux-amd64   ./cmd/drupal-watcher
