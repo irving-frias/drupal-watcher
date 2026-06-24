@@ -4,76 +4,98 @@
  * Drupal Watcher — binary downloader
  *
  * Detects OS/arch and downloads the matching pre-built binary from GitHub Releases.
- * Called via Composer post-install-cmd.
+ * Called via Composer post-install-cmd or bin/drupal-watcher launcher.
  */
 
-$version = getenv('DRUPAL_WATCHER_VERSION') ?: 'v1.0.0-beta3';
+$installDir = __DIR__;
+
+// Read version from the package's composer.json
+$composerJson = json_decode(file_get_contents($installDir . '/../composer.json'), true);
+$version = $composerJson['extra']['drupal-watcher-version'] ?? getenv('DRUPAL_WATCHER_VERSION') ?: 'v1.0.0-beta4';
 $repo = 'irving-frias/drupal-watcher';
 
-// Map PHP_OS to Goos
+$targetPath = $installDir . '/drupal-watcher-go';
+
+if (file_exists($targetPath) && is_executable($targetPath)) {
+  echo "✔ Drupal Watcher binary already exists.\n";
+  exit(0);
+}
+
+// Map OS
 $osMap = [
-    'Linux'  => 'linux',
-    'Darwin' => 'darwin',
-    'WINNT'  => 'windows',
-    'CYGWIN' => 'windows',
-    'FreeBSD' => 'freebsd',
+  'Linux'    => 'linux',
+  'Darwin'   => 'darwin',
+  'WINNT'    => 'windows',
+  'CYGWIN'   => 'windows',
+  'FreeBSD'  => 'freebsd',
 ];
 $goos = $osMap[PHP_OS] ?? strtolower(PHP_OS);
 
-// Map architecture
-$archRaw = php_uname('m');
+// Map arch
 $archMap = [
-    'x86_64'  => 'amd64',
-    'amd64'   => 'amd64',
-    'aarch64' => 'arm64',
-    'arm64'   => 'arm64',
-    'x86'     => '386',
-    'i386'    => '386',
-    'i686'    => '386',
+  'x86_64'  => 'amd64',
+  'amd64'   => 'amd64',
+  'aarch64' => 'arm64',
+  'arm64'   => 'arm64',
+  'x86'     => '386',
+  'i386'    => '386',
+  'i686'    => '386',
 ];
-$goarch = $archMap[$archRaw] ?? $archRaw;
+$goarch = $archMap[php_uname('m')] ?? php_uname('m');
 
-$suffix = $goos === 'windows' ? '.exe' : '';
-$binaryName = "drupal-watcher-{$goos}-{$goarch}{$suffix}";
+$binaryName = "drupal-watcher-{$goos}-{$goarch}";
+$isWindows = $goos === 'windows';
 
-$installDir = __DIR__;
-$targetPath = $installDir . '/drupal-watcher-go';
-
-// Already installed?
-if (file_exists($targetPath) && is_executable($targetPath)) {
-    echo "✔ Drupal Watcher binary already exists.\n";
-    exit(0);
+if ($isWindows) {
+  $archiveName = $binaryName . '.exe.zip';
+} else {
+  $archiveName = $binaryName . '.gz';
 }
 
-$url = "https://github.com/{$repo}/releases/download/{$version}/{$binaryName}";
-echo "⬇  Downloading {$binaryName}...\n";
+$url = "https://github.com/{$repo}/releases/download/{$version}/{$archiveName}";
+echo "⬇  Downloading {$archiveName}...\n";
 
 $context = stream_context_create([
-    'http' => [
-        'method' => 'GET',
-        'header' => "Accept: application/octet-stream\r\n",
-        'timeout' => 30,
-        'follow_location' => 1,
-    ],
-    'ssl' => [
-        'verify_peer' => true,
-        'verify_peer_name' => true,
-    ],
+  'http' => [
+    'method' => 'GET',
+    'timeout' => 30,
+    'follow_location' => 1,
+    'header' => "Accept: application/octet-stream\r\n",
+  ],
+  'ssl' => [
+    'verify_peer' => true,
+    'verify_peer_name' => true,
+  ],
 ]);
 
-$binary = @file_get_contents($url, false, $context);
-if ($binary === false) {
-    $error = error_get_last();
-    echo "⚠  Download failed: " . ($error['message'] ?? 'unknown error') . "\n";
-    echo "   URL: {$url}\n";
-    echo "   Install Go or download manually from: https://github.com/{$repo}/releases\n";
-    exit(1);
+$data = @file_get_contents($url, false, $context);
+if ($data === false) {
+  echo "⚠  Download failed: {$url}\n";
+  echo "   Install Go or download manually from: https://github.com/{$repo}/releases\n";
+  exit(1);
 }
 
-$written = file_put_contents($targetPath, $binary);
-if ($written === false) {
-    echo "✖ Failed to write binary to {$targetPath}\n";
+if ($isWindows) {
+  if (!class_exists('ZipArchive')) {
+    echo "✖ Zip extension required. Unzip manually: {$url}\n";
     exit(1);
+  }
+  $zipPath = $installDir . '/drupal-watcher-tmp.zip';
+  file_put_contents($zipPath, $data);
+  $zip = new ZipArchive;
+  if ($zip->open($zipPath) === true) {
+    $zip->extractTo($installDir, ['drupal-watcher-windows-amd64.exe']);
+    rename($installDir . '/drupal-watcher-windows-amd64.exe', $targetPath);
+    $zip->close();
+  }
+  unlink($zipPath);
+} else {
+  $decompressed = gzdecode($data);
+  if ($decompressed === false) {
+    echo "✖ Failed to decompress {$archiveName}\n";
+    exit(1);
+  }
+  file_put_contents($targetPath, $decompressed);
 }
 
 chmod($targetPath, 0755);
