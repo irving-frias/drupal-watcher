@@ -144,8 +144,8 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 		DrushCmd:  nil,
 		DrushCommand: "cr",
 		CommandsPerPattern: map[string]string{
-			".html.twig":     "cc twig",
-			".theme":         "cc theme-registry",
+			".html.twig":     "cc bin twig",
+			".theme":         "cc plugin",
 			".module":        "cc plugin",
 			".inc":           "cc plugin",
 			".yml":           "cc plugin",

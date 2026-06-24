@@ -9,14 +9,18 @@ File watcher for Drupal development. Monitors custom modules and themes and auto
 
 > Go is **not required**. The binary is auto-downloaded during `composer install`.
 
+> **Development tool only.** This package is meant for local development and should not be required in production environments. Install it with `composer require --dev irving-frias/drupal-watcher`.
+
 ## Installation
 
 ```bash
-composer require irving-frias/drupal-watcher
+composer require --dev irving-frias/drupal-watcher
 vendor/bin/drupal-watcher help
 ```
 
 On `composer install` the correct binary for your OS/architecture is downloaded from GitHub Releases and placed at `vendor/irving-frias/drupal-watcher/bin/drupal-watcher-go`. No compilation needed.
+
+> Install with `--dev` to exclude it from production deployments via `composer install --no-dev`.
 
 ### Manual download
 
@@ -64,8 +68,8 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
   "patterns": [".php", ".module", ".inc", ".yml", ".html.twig"],
   "debounce": 800,
   "commandsPerPattern": {
-    ".html.twig": "cc twig",
-    ".theme": "cc theme-registry",
+    ".html.twig": "cc bin twig",
+    ".theme": "cc plugin",
     ".module": "cc plugin",
     ".inc": "cc plugin",
     ".yml": "cc plugin",
@@ -109,8 +113,8 @@ Different file types run different drush commands:
 
 | Extension      | Drush command       |
 |----------------|---------------------|
-| `.html.twig`   | `cc twig`           |
-| `.theme`       | `cc theme-registry` |
+| `.html.twig`   | `cc bin twig`       |
+| `.theme`       | `cc plugin`         |
 | `.module`      | `cc plugin`         |
 | `.inc`         | `cc plugin`         |
 | `.yml`         | `cc plugin`         |

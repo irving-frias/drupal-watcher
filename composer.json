@@ -1,6 +1,6 @@
 {
   "name": "irving-frias/drupal-watcher",
-  "description": "Drupal file watcher — monitors custom modules/themes and auto-runs drush cr. Supports DDEV, Lando, and local environments.",
+  "description": "Drupal file watcher — monitors custom modules/themes and auto-runs drush cache clears on file changes. Development tool only, not required in production.",
   "type": "library",
   "license": "MIT",
   "bin": [
@@ -18,6 +18,17 @@
     ]
   },
   "support": {
-    "issues": "https://github.com/irving-frias/drupal-watcher/issues"
-  }
+    "issues": "https://github.com/irving-frias/drupal-watcher/issues",
+    "source": "https://github.com/irving-frias/drupal-watcher",
+    "docs": "https://github.com/irving-frias/drupal-watcher#readme"
+  },
+  "keywords": [
+    "drupal",
+    "watcher",
+    "file-watcher",
+    "drush",
+    "development",
+    "ddev",
+    "lando"
+  ]
 }
