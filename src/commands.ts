@@ -1,30 +1,30 @@
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 import {
   P_ERROR, P_WARN, P_INFO, P_SUCCESS,
   green, yellow, blue, cyan, bold, dim, red,
   printHeader, printSection, POSSIBLE_DOCROOTS,
-} from "./utils.js";
+} from "./utils";
 import {
   loadConfig, saveConfig, getDefaultConfig, detectDrupalRoot,
   writePid, removePid, checkPid, getStarttime,
-} from "./config.js";
-import { getDrushCommand, getDrushSpawnArgs, healthCheck } from "./drush.js";
-import { startWatcher, stopWatcher, resetDebounce, printStats, getWatcherHandle } from "./watcher.js";
-import { readFileSync } from "fs";
+} from "./config";
+import { getDrushCommand, getDrushSpawnArgs, healthCheck } from "./drush";
+import { startWatcher, stopWatcher, resetDebounce, printStats, getWatcherHandle } from "./watcher";
+import type { StartFlags } from "./types";
 
 const BIN = "vendor/bin/drupal-watcher";
 
-function pkgVersion() {
+function pkgVersion(): string {
   try {
-    const p = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8"));
+    const p = JSON.parse(readFileSync(path.join(import.meta.dir, "..", "package.json"), "utf-8"));
     return p.version || "unknown";
   } catch {
     return "unknown";
   }
 }
 
-const COMMANDS = [
+const COMMANDS: [string, string][] = [
   ["start", "Start the file watcher"],
   ["status", "Show whether the watcher is running"],
   ["list", "Display current configuration"],
@@ -35,7 +35,7 @@ const COMMANDS = [
   ["help   [command]", "Show detailed help for a command"],
 ];
 
-const GLOBAL_FLAGS = [
+const GLOBAL_FLAGS: [string, string][] = [
   ["--abort-on-drush-error", "Exit if Drush does not respond"],
   ["--watch=<path>", "Watch only a specific route (substring match)"],
   ["--no-watch=<path>", "Exclude a specific route (substring match)"],
@@ -50,7 +50,7 @@ const GLOBAL_FLAGS = [
   ["--version, -V", "Show version number"],
 ];
 
-const EXAMPLES = [
+const EXAMPLES: string[] = [
   `${BIN} start`,
   `${BIN} add docroot/modules/contrib`,
   `${BIN} remove docroot/modules/contrib`,
@@ -61,7 +61,7 @@ const EXAMPLES = [
 
 // ── Help ──────────────────────────────────────────────────
 
-export function cmdHelp(command) {
+export function cmdHelp(command?: string) {
   if (command === "version" || command === "--version" || command === "-V") {
     console.log(`drupal-watcher v${pkgVersion()}`);
     return;
@@ -201,7 +201,7 @@ export async function cmdStatus() {
 
 // ── Add ───────────────────────────────────────────────────
 
-export async function cmdAdd(newRoute) {
+export async function cmdAdd(newRoute?: string) {
   if (!newRoute) {
     console.error(`${P_ERROR} Specify a path to add.`);
     console.log(`   ${yellow("Examples:")}`);
@@ -246,7 +246,7 @@ export async function cmdAdd(newRoute) {
 
 // ── Remove ────────────────────────────────────────────────
 
-export async function cmdRemove(routeToRemove) {
+export async function cmdRemove(routeToRemove?: string) {
   if (!routeToRemove) {
     console.error(`${P_ERROR} Specify a path to remove.`);
     console.log(`   ${yellow("Examples:")}`);
@@ -305,24 +305,24 @@ export async function cmdRestart() {
     console.log(`${P_INFO} Stopping watcher (PID: ${pid})...`);
     process.kill(parseInt(pid, 10), "SIGTERM");
     await removePid();
-    await new Promise(r => setTimeout(r, 1000));
+    await Bun.sleep(1000);
   } else {
     console.log(`${P_INFO} No active watcher to stop. Starting fresh.`);
   }
   await cmdStart();
 }
 
-async function ask(prompt) {
+async function ask(prompt: string): Promise<{ confirm: boolean }> {
   const buf = new Uint8Array(1024);
-  await Bun.write(Bun.stdout, Buffer.from(prompt));
-  const n = await Bun.stdin.read(buf);
-  const answer = new TextDecoder().decode(buf.subarray(0, n)).trim().toLowerCase();
+  await Bun.write(Bun.stdout, new TextEncoder().encode(prompt));
+  const n = (Bun.stdin as any).read(buf) as number | null;
+  const answer = new TextDecoder().decode(buf.subarray(0, n ?? 0)).trim().toLowerCase();
   return { confirm: answer === "y" || answer === "yes" };
 }
 
 // ── Start ─────────────────────────────────────────────────
 
-export async function cmdStart(flags = {}) {
+export async function cmdStart(flags: Partial<StartFlags> = {}) {
   const {
     abortOnDrushError = false, watchRoutes = [], noWatchRoutes = [],
     dryRun = false, verbose = false, debounce, noDotfiles = false, logFile,
@@ -418,11 +418,11 @@ export async function cmdStart(flags = {}) {
     const writer = Bun.file(logFile).writer();
     const origLog = console.log;
     const origError = console.error;
-    console.log = (...args) => {
+    console.log = (...args: unknown[]) => {
       origLog(...args);
       writer.write(args.map(String).join(" ") + "\n");
     };
-    console.error = (...args) => {
+    console.error = (...args: unknown[]) => {
       origError(...args);
       writer.write(args.map(String).join(" ") + "\n");
     };
@@ -439,7 +439,7 @@ export async function cmdStart(flags = {}) {
 
   console.log(`\n${P_SUCCESS} Watcher active. Waiting for changes... (Ctrl+C to stop)`);
 
-  function shutdown(signal) {
+  function shutdown(signal: string) {
     console.log(`\n${yellow("🛑")} Stopping watcher (${signal})...`);
     resetDebounce();
     stopWatcher();

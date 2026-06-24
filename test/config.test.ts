@@ -348,7 +348,7 @@ describe("PID check", () => {
   it("starttime round-trip works", async () => {
     const { writeStarttime, getStarttime, removeStarttime } = await import("../src/config");
     await writeStarttime(TEST_DIR);
-    const t = await getStarttime(TEST_DIR);
+    const t = await getStarttime(TEST_DIR) as number;
     expect(typeof t).toBe("number");
     expect(t).toBeGreaterThan(0);
     expect(Date.now() - t).toBeLessThan(5000);

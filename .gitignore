@@ -3,3 +3,4 @@ dist/
 watcher.config.json
 *.log
 .test-tmp/
+*.tsbuildinfo

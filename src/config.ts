@@ -1,37 +1,38 @@
 import { existsSync } from "fs";
 import path from "path";
-import { P_ERROR, P_WARN, P_INFO, P_SUCCESS, POSSIBLE_DOCROOTS, cyan, yellow } from "./utils.js";
+import { P_ERROR, P_WARN, P_INFO, P_SUCCESS, POSSIBLE_DOCROOTS, cyan, yellow } from "./utils";
+import type { WatcherConfig } from "./types";
 
-const PACKAGE_DIR = path.normalize(new URL("../", import.meta.url).pathname);
+const PACKAGE_DIR = path.join(import.meta.dir, "..");
 
-function getRoot(r) {
+function getRoot(r?: string) {
   return r || process.cwd();
 }
 
-const _rootCache = new Map();
-let _customConfigPath = null;
+const _rootCache = new Map<string, { root?: string | null; config?: WatcherConfig }>();
+let _customConfigPath: string | null = null;
 
-export function setCustomConfigPath(p) {
+export function setCustomConfigPath(p: string) {
   _customConfigPath = p;
 }
 
-function configPath(root) {
+function configPath(root?: string) {
   if (_customConfigPath) return _customConfigPath;
   return path.join(getRoot(root), "watcher.config.json");
 }
 
-function pidPath(root) {
+function pidPath(root?: string) {
   return path.join(root || PACKAGE_DIR, ".drupal-watcher.pid");
 }
 
-function starttimePath(root) {
+function starttimePath(root?: string) {
   return path.join(root || PACKAGE_DIR, ".drupal-watcher.starttime");
 }
 
-export function detectDrupalRoot(root) {
+export function detectDrupalRoot(root?: string): string | null {
   const r = getRoot(root);
   const cached = _rootCache.get(r);
-  if (cached && "root" in cached) return cached.root;
+  if (cached && "root" in cached) return cached.root ?? null;
 
   for (const dir of POSSIBLE_DOCROOTS) {
     const fullPath = path.join(r, dir);
@@ -55,7 +56,7 @@ export function detectDrupalRoot(root) {
   return null;
 }
 
-export function getDefaultConfig(root) {
+export function getDefaultConfig(root?: string): WatcherConfig {
   const drupalRoot = detectDrupalRoot(root) || "docroot";
   return {
     routes: [`${drupalRoot}/modules/custom`, `${drupalRoot}/themes/custom`],
@@ -80,7 +81,7 @@ export function getDefaultConfig(root) {
   };
 }
 
-export async function loadConfig(root) {
+export async function loadConfig(root?: string): Promise<WatcherConfig> {
   const r = getRoot(root);
   const cached = _rootCache.get(r);
   if (cached && cached.config) return cached.config;
@@ -98,20 +99,19 @@ export async function loadConfig(root) {
   }
 
   try {
-    const raw = await file.text();
-    const parsed = JSON.parse(raw);
+    const parsed = (await file.json()) as Partial<WatcherConfig>;
 
     if (!parsed.drupalRoot) {
       const detected = detectDrupalRoot(r);
       if (detected) {
         parsed.drupalRoot = detected;
-        parsed.routes = parsed.routes.map(route => {
+        parsed.routes = parsed.routes?.map(route => {
           const parts = route.split("/");
           if (parts.length > 0 && POSSIBLE_DOCROOTS.includes(parts[0]) && parts[0] !== detected) {
             return route.replace(parts[0], detected);
           }
           return route;
-        });
+        }) ?? parsed.routes;
         await saveConfig(parsed, r);
       }
     }
@@ -119,7 +119,7 @@ export async function loadConfig(root) {
     const entry = _rootCache.get(r) || {};
     entry.config = validateConfig({ ...getDefaultConfig(r), ...parsed }, r);
     _rootCache.set(r, entry);
-    return entry.config;
+    return entry.config!;
   } catch {
     console.error(`${P_ERROR} Failed to read ${cyan("watcher.config.json")}. The file may be corrupted. Using default configuration.`);
     const def = getDefaultConfig(r);
@@ -130,7 +130,7 @@ export async function loadConfig(root) {
   }
 }
 
-export function validateConfig(config, root) {
+export function validateConfig(config: Record<string, any>, root?: string): WatcherConfig {
   const defaults = getDefaultConfig(root);
   if (!Array.isArray(config.routes)) config.routes = defaults.routes;
   if (!Array.isArray(config.patterns)) config.patterns = defaults.patterns;
@@ -146,60 +146,58 @@ export function validateConfig(config, root) {
     config.commandsPerPattern = defaults.commandsPerPattern;
   }
   if (typeof config.drupalRoot !== "string") config.drupalRoot = defaults.drupalRoot;
-  config.routes = config.routes.map(r => path.normalize(r).replace(/\/+$/, ""));
-  return config;
+  config.routes = config.routes!.map((r: string) => path.normalize(r).replace(/\/+$/, ""));
+  return config as WatcherConfig;
 }
 
-export async function saveConfig(config, root) {
+export async function saveConfig(config: Record<string, any>, root?: string) {
   const r = getRoot(root);
   await Bun.write(configPath(r), JSON.stringify(config, null, 2));
   const cached = _rootCache.get(r);
-  if (cached) cached.config = null;
+  if (cached) cached.config = undefined;
 }
 
 // --- PID file ---
-export function getPidFile(root) {
+export function getPidFile(root?: string) {
   return pidPath(root);
 }
 
-export async function writePid(root) {
+export async function writePid(root?: string) {
   await Bun.write(pidPath(root), String(process.pid));
   await writeStarttime(root);
 }
 
-export async function removePid(root) {
+export async function removePid(root?: string) {
   try {
     await Bun.write(pidPath(root), "");
-    const { rm } = await import("fs/promises");
-    await rm(pidPath(root), { force: true });
-  } catch (e) {
-    console.warn(`${P_WARN} Failed to remove PID file: ${e.message}`);
+    await Bun.spawn(["rm", "-f", pidPath(root)]).exited;
+  } catch (e: unknown) {
+    console.warn(`${P_WARN} Failed to remove PID file: ${e instanceof Error ? e.message : e}`);
   }
   await removeStarttime(root);
 }
 
 // --- Start time file (for uptime) ---
-export async function writeStarttime(root) {
+export async function writeStarttime(root?: string) {
   await Bun.write(starttimePath(root), String(Date.now()));
 }
 
-export async function getStarttime(root) {
+export async function getStarttime(root?: string): Promise<number | null> {
   const file = Bun.file(starttimePath(root));
   if (!(await file.exists())) return null;
   const t = (await file.text()).trim();
   return t ? parseInt(t, 10) : null;
 }
 
-export async function removeStarttime(root) {
+export async function removeStarttime(root?: string) {
   try {
-    const { rm } = await import("fs/promises");
-    await rm(starttimePath(root), { force: true });
-  } catch (e) {
-    console.warn(`${P_WARN} Failed to remove starttime file: ${e.message}`);
+    await Bun.spawn(["rm", "-f", starttimePath(root)]).exited;
+  } catch (e: unknown) {
+    console.warn(`${P_WARN} Failed to remove starttime file: ${e instanceof Error ? e.message : e}`);
   }
 }
 
-export async function checkPid(root) {
+export async function checkPid(root?: string): Promise<string | null | "stale"> {
   const file = Bun.file(pidPath(root));
   if (!(await file.exists())) return null;
   const pid = (await file.text()).trim();
@@ -212,7 +210,7 @@ export async function checkPid(root) {
   }
 }
 
-export function invalidateConfigCache(root) {
+export function invalidateConfigCache(root?: string) {
   const r = getRoot(root);
   _rootCache.delete(r);
 }
