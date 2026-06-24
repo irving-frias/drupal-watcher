@@ -229,7 +229,7 @@ func TestCommandsPerPatternMerge(t *testing.T) {
 	}
 	validated := m.ValidateConfig(cfg, "")
 
-	if validated.CommandsPerPattern[".html.twig"] != "cc bin twig" {
+	if validated.CommandsPerPattern[".html.twig"] != "cc render" {
 		t.Error("expected default for .html.twig to be preserved")
 	}
 	if validated.CommandsPerPattern[".php"] != "custom command" {

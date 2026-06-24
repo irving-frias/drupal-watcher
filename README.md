@@ -68,14 +68,20 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
   "patterns": [".php", ".module", ".inc", ".yml", ".html.twig"],
   "debounce": 800,
   "commandsPerPattern": {
-    ".html.twig": "cc bin twig",
+    ".html.twig": "cc render",
+    ".twig": "cc render",
     ".theme": "cc theme-registry",
     ".module": "cc plugin",
     ".inc": "cc plugin",
-    ".yml": "cc plugin",
     ".php": "cc plugin",
+    ".yml": "cc plugin",
     ".info.yml": "cr",
-    ".services.yml": "cr"
+    ".services.yml": "cr",
+    ".routing.yml": "cr",
+    ".permissions.yml": "cr",
+    ".links.menu.yml": "cr",
+    ".css": "cc css-js",
+    ".js": "cc css-js"
   }
 }
 ```
@@ -113,14 +119,20 @@ Different file types run different drush commands:
 
 | Extension      | Drush command       |
 |----------------|---------------------|
-| `.html.twig`   | `cc bin twig`       |
-| `.theme`       | `cc theme-registry` |
-| `.module`      | `cc plugin`         |
-| `.inc`         | `cc plugin`         |
-| `.yml`         | `cc plugin`         |
-| `.info.yml`    | `cr`                |
-| `.services.yml`| `cr`                |
-| `.php`         | `cc plugin`         |
+| `.html.twig`       | `cc render`         |
+| `.twig`            | `cc render`         |
+| `.theme`           | `cc theme-registry` |
+| `.module`          | `cc plugin`         |
+| `.inc`             | `cc plugin`         |
+| `.php`             | `cc plugin`         |
+| `.yml`             | `cc plugin`         |
+| `.info.yml`        | `cr`                |
+| `.services.yml`    | `cr`                |
+| `.routing.yml`     | `cr`                |
+| `.permissions.yml` | `cr`                |
+| `.links.menu.yml`  | `cr`                |
+| `.css`             | `cc css-js`         |
+| `.js`              | `cc css-js`         |
 
 ## Development (requires Go)
 
