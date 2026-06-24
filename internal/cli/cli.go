@@ -541,9 +541,11 @@ Commands:
   add         Add route and/or pattern
   remove      Remove route and/or pattern
   reset       Stop watcher and reset PID
+  tui         Terminal UI (experimental)
   help        Show this help
 
 Options:
+  --root <path>          Drupal root directory (default: cwd)
   --debounce <ms>        Debounce interval (default: 800)
   --no-dotfiles          Ignore dotfiles
   --log-file <path>      Write logs to file
