@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/signal"
@@ -90,25 +91,114 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s Watcher started. PID %d. %s to stop.\n",
-		utils.Timestamp(), os.Getpid(), utils.Green("Ctrl+C"))
+	fmt.Printf("%s Watcher started. PID %d. Type %s for commands.\n",
+		utils.Timestamp(), os.Getpid(), utils.Green("help"))
+
+	// Interactive stdin commands
+	cmdCh := make(chan string)
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			cmdCh <- strings.TrimSpace(scanner.Text())
+		}
+	}()
 
 	// Signal handling
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 
-	select {
-	case sig := <-sigCh:
-		fmt.Printf("\n%s Received %s, stopping...\n", utils.Timestamp(), utils.Red(sig.String()))
-	case <-h.StopCh:
+	stopped := false
+	for !stopped {
+		select {
+		case sig := <-sigCh:
+			fmt.Printf("\n%s Received %s, stopping...\n", utils.Timestamp(), utils.Red(sig.String()))
+			stopped = true
+
+		case <-h.StopCh:
+			stopped = true
+
+		case input := <-cmdCh:
+			parts := strings.Fields(input)
+			if len(parts) == 0 {
+				continue
+			}
+			switch parts[0] {
+			case "status":
+				printInteractiveStatus(h)
+			case "list", "config":
+				printInteractiveConfig(cfg)
+			case "stats":
+				uptime := time.Since(h.Stats.StartTime)
+				fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
+					h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
+			case "add":
+				if len(parts) < 2 {
+					fmt.Println("  Usage: add <route> [pattern]")
+					break
+				}
+				route := parts[1]
+				pattern := ""
+				if len(parts) > 2 {
+					pattern = parts[2]
+				}
+				cfg.Routes = append(cfg.Routes, route)
+				if pattern != "" {
+					cfg.Patterns = append(cfg.Patterns, pattern)
+				}
+				if err := mgr.SaveConfig(cfg, root); err != nil {
+					fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
+				} else {
+					fmt.Printf("  %s Added route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+					h = restartWatcher(h, cfg, logFile)
+				}
+			case "remove", "rm":
+				if len(parts) < 2 {
+					fmt.Println("  Usage: remove <route>")
+					break
+				}
+				route := parts[1]
+				newRoutes := make([]string, 0, len(cfg.Routes))
+				for _, r := range cfg.Routes {
+					if r != route {
+						newRoutes = append(newRoutes, r)
+					}
+				}
+				if len(newRoutes) == len(cfg.Routes) {
+					fmt.Printf("  %s Route not found: %s\n", utils.P_WARN, utils.Cyan(route))
+				} else {
+					cfg.Routes = newRoutes
+					if err := mgr.SaveConfig(cfg, root); err != nil {
+						fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
+					} else {
+						fmt.Printf("  %s Removed route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+						h = restartWatcher(h, cfg, logFile)
+					}
+				}
+			case "reload":
+				newCfg, err := mgr.LoadConfig(root)
+				if err != nil {
+					fmt.Printf("  %s Failed to reload config: %v\n", utils.P_ERROR, err)
+				} else {
+					cfg = newCfg
+					h = restartWatcher(h, cfg, logFile)
+					fmt.Printf("  %s Config reloaded.\n", utils.P_SUCCESS)
+				}
+			case "stop", "quit", "exit":
+				fmt.Println("  Stopping watcher...")
+				stopped = true
+			case "help":
+				printInteractiveHelp()
+			default:
+				fmt.Printf("  Unknown command: %s. Type %s.\n", parts[0], utils.Green("help"))
+			}
+		}
 	}
 
 	watcher.Stop(h)
 
-	// Print stats
 	uptime := time.Since(h.Stats.StartTime)
 	fmt.Printf("\n%s Watcher stopped. %d changes, %d cache clears, uptime %v\n",
-		utils.P_INFO, h.Stats.Changes.Load(), h.Stats.Clears.Load(), uptime)
+		utils.P_INFO, h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
 }
 
 func CmdList(root string, mgr *config.Manager) {
@@ -314,6 +404,43 @@ Options:
   --log-file <path>      Write logs to file
   --commands-per-pattern <json>  Override pattern commands
 `)
+}
+
+func restartWatcher(h *watcher.Handle, cfg config.Config, logFile *os.File) *watcher.Handle {
+	watcher.Stop(h)
+	time.Sleep(200 * time.Millisecond)
+	newH, err := watcher.Start(cfg, logFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s Failed to restart watcher: %v\n", utils.P_ERROR, err)
+		return h
+	}
+	fmt.Printf("  %s Watcher restarted.\n", utils.P_SUCCESS)
+	return newH
+}
+
+func printInteractiveStatus(h *watcher.Handle) {
+	uptime := time.Since(h.Stats.StartTime)
+	fmt.Printf("  %s Watcher running. PID %d\n", utils.Green("●"), os.Getpid())
+	fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
+		h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
+}
+
+func printInteractiveConfig(cfg config.Config) {
+	fmt.Printf("  Routes: %s\n", utils.Cyan(strings.Join(cfg.Routes, ", ")))
+	fmt.Printf("  Patterns: %s\n", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
+	fmt.Printf("  Debounce: %dms\n", cfg.Debounce)
+}
+
+func printInteractiveHelp() {
+	fmt.Println("  Commands:")
+	fmt.Println("    status              Show watcher status and stats")
+	fmt.Println("    list                Show current configuration")
+	fmt.Println("    stats               Show runtime statistics")
+	fmt.Println("    add <route>         Add a route to watch")
+	fmt.Println("    remove <route>      Remove a watched route")
+	fmt.Println("    reload              Reload config from file")
+	fmt.Println("    stop/quit/exit      Stop the watcher")
+	fmt.Println("    help                Show this help")
 }
 
 func IsPidRunning(pid int) bool {
