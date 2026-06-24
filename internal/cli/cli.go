@@ -250,7 +250,7 @@ func CmdMonitor(root string, mgr *config.Manager) {
 
 	// Print initial status, then refresh every 2s
 	printMonitorStatus(root, mgr)
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -512,7 +512,7 @@ func printInteractiveStatus(h *watcher.Handle) {
 }
 
 func monitorLoop(h *watcher.Handle) {
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	done := make(chan struct{})
