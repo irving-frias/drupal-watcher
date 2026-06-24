@@ -9,19 +9,13 @@ done
 DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 BINARY="$DIR/drupal-watcher-go"
 
-install_binary() {
-  echo "Downloading Drupal Watcher binary..." >&2
-  php "$DIR/install.php"
-}
+# Run setup: download binary if missing, ensure vendor/bin symlink
+php "$DIR/install.php"
 
 if [ ! -x "$BINARY" ]; then
-  install_binary
-  if [ ! -x "$BINARY" ]; then
-    echo "Error: failed to install Drupal Watcher." >&2
-    echo "Download manually from: https://github.com/irving-frias/drupal-watcher/releases" >&2
-    echo "Place it at: $BINARY" >&2
-    exit 1
-  fi
+  echo "Error: Drupal Watcher binary not found at $BINARY" >&2
+  echo "Download manually from: https://github.com/irving-frias/drupal-watcher/releases" >&2
+  exit 1
 fi
 
 exec "$BINARY" "$@"

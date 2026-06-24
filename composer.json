@@ -12,7 +12,10 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "@php vendor/irving-frias/drupal-watcher/bin/install.php"
+      "@php bin/install.php"
+    ],
+    "post-update-cmd": [
+      "@php bin/install.php"
     ]
   },
   "support": {
