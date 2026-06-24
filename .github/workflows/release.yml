@@ -25,12 +25,13 @@ jobs:
 
       - name: Cross-compile
         run: |
+          LDFLAGS="-X github.com/irving-frias/drupal-watcher/internal/cli.Version=${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          GOOS=linux   GOARCH=amd64 go build -o "dist/drupal-watcher-linux-amd64" ./cmd/drupal-watcher
-          GOOS=linux   GOARCH=arm64 go build -o "dist/drupal-watcher-linux-arm64" ./cmd/drupal-watcher
-          GOOS=darwin  GOARCH=amd64 go build -o "dist/drupal-watcher-darwin-amd64" ./cmd/drupal-watcher
-          GOOS=darwin  GOARCH=arm64 go build -o "dist/drupal-watcher-darwin-arm64" ./cmd/drupal-watcher
-          GOOS=windows GOARCH=amd64 go build -o "dist/drupal-watcher-windows-amd64.exe" ./cmd/drupal-watcher
+          GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-linux-amd64" ./cmd/drupal-watcher
+          GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-linux-arm64" ./cmd/drupal-watcher
+          GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-darwin-amd64" ./cmd/drupal-watcher
+          GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-darwin-arm64" ./cmd/drupal-watcher
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-windows-amd64.exe" ./cmd/drupal-watcher
 
       - name: Archive binaries
         run: |

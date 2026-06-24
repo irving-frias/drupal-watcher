@@ -15,9 +15,9 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
 )
 
-func PkgVersion() string {
-	return "0.1.0" // TODO: read from go.mod or ldflags
-}
+var Version = "0.1.0" // overridden via ldflags at build time
+
+func PkgVersion() string { return Version }
 
 func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 	cfg, err := mgr.LoadConfig(root)
