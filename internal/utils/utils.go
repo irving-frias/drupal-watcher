@@ -75,8 +75,10 @@ var PossibleDocroots = []string{"docroot", "web", "html", "public", "drupal"}
 var ExcludedDirs = []string{"node_modules", ".git", "files"}
 
 var DefaultPatterns = []string{
-	".html.twig", ".inc", ".yml", ".module", ".theme",
+	".html.twig", ".twig", ".inc", ".yml", ".module", ".theme",
 	".php", ".info.yml", ".services.yml",
+	".routing.yml", ".permissions.yml", ".links.menu.yml",
+	".css", ".js",
 }
 
 func PrintHeader(title string) {

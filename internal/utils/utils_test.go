@@ -68,15 +68,12 @@ func TestDefaultPatterns(t *testing.T) {
 	if len(patterns) == 0 {
 		t.Error("expected default patterns")
 	}
-	found := false
+	expected := map[string]bool{".php": true, ".twig": true, ".css": true, ".js": true}
 	for _, p := range patterns {
-		if p == ".php" {
-			found = true
-			break
-		}
+		delete(expected, p)
 	}
-	if !found {
-		t.Error("expected .php in default patterns")
+	for missing := range expected {
+		t.Errorf("expected %s in default patterns", missing)
 	}
 }
 

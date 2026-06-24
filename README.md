@@ -68,7 +68,7 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
 ```json
 {
   "routes": ["docroot/modules/custom", "docroot/themes/custom"],
-  "patterns": [".php", ".module", ".inc", ".yml", ".html.twig"],
+  "patterns": [".php", ".module", ".inc", ".yml", ".html.twig", ".twig", ".css", ".js"],
   "debounce": 800,
   "commandsPerPattern": {
     ".html.twig": "cc render",
