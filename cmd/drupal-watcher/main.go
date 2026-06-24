@@ -58,6 +58,13 @@ func main() {
 		}
 		cli.CmdStatus(root, mgr)
 
+	case "monitor", "m":
+		root := ""
+		if len(extraArgs) > 0 {
+			root = extraArgs[0]
+		}
+		cli.CmdMonitor(root, mgr)
+
 	case "list", "config":
 		root := ""
 		if len(extraArgs) > 0 {

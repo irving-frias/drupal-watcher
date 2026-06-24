@@ -39,12 +39,12 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
 
 ## Commands
 
-| Command       | Description                            |
-|---------------|----------------------------------------|
-| start         | Start watching file changes            |
-| status        | Show running status and uptime         |
-| monitor (m)   | Auto-refresh status every 2 seconds    |
-| list          | Display current configuration          |
+| Command            | Description                            |
+|--------------------|----------------------------------------|
+| start              | Start watching file changes            |
+| status             | Show running status and uptime         |
+| monitor (m)        | Auto-refresh status every 2 seconds    |
+| list / config      | Display current configuration          |
 | add           | Add route and/or pattern to watch      |
 | remove        | Remove route and/or pattern            |
 | restart       | Restart the watcher                    |
