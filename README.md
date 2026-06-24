@@ -4,7 +4,7 @@ File watcher for Drupal development. Monitors custom modules and themes, auto-ru
 
 ## Requirements
 
-- **Go 1.21+** to compile (or download a [pre-built binary](https://github.com/irving-frias/drupal-watcher/releases))
+- **Go 1.21+** to compile from source (optional — download a [pre-built binary](https://github.com/irving-frias/drupal-watcher/releases) instead)
 - **Drush** installed in your Drupal project
 
 ## Installation
@@ -16,7 +16,7 @@ composer require irving-frias/drupal-watcher
 vendor/bin/drupal-watcher help
 ```
 
-The binary compiles automatically on `composer install` (requires Go). If Go is not available, the launcher will compile on first run.
+The binary compiles automatically on `composer install` (requires Go). If Go is not available, [download a pre-built binary](https://github.com/irving-frias/drupal-watcher/releases) and place it at `vendor/bin/drupal-watcher-go`.
 
 ### Standalone binary
 
