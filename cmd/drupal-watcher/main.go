@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -35,52 +36,72 @@ func main() {
 		if len(extraArgs) > 0 {
 			root = extraArgs[0]
 		}
-		cli.CmdStart(root, flags, mgr)
+		if err := cli.CmdStart(context.Background(), root, flags, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "stop", "reset":
 		root := ""
 		if len(extraArgs) > 0 {
 			root = extraArgs[0]
 		}
-		cli.CmdReset(root, mgr)
+		if err := cli.CmdReset(root, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "restart":
 		root := ""
 		if len(extraArgs) > 0 {
 			root = extraArgs[0]
 		}
-		cli.CmdRestart(root, flags, mgr)
+		if err := cli.CmdRestart(root, flags, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "status":
 		root := ""
 		if len(extraArgs) > 0 {
 			root = extraArgs[0]
 		}
-		cli.CmdStatus(root, mgr)
+		if err := cli.CmdStatus(root, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "monitor", "m":
 		root := ""
 		if len(extraArgs) > 0 {
 			root = extraArgs[0]
 		}
-		cli.CmdMonitor(root, mgr)
+		if err := cli.CmdMonitor(root, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "list", "config":
 		root := ""
 		if len(extraArgs) > 0 {
 			root = extraArgs[0]
 		}
-		cli.CmdList(root, mgr)
+		if err := cli.CmdList(root, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "add":
 		root := ""
 		routeArgs := extraArgs
 		if len(extraArgs) > 0 && !strings.Contains(extraArgs[0], ":") && !strings.HasPrefix(extraArgs[0], "/") {
-			// First arg might be a root path
 			root = extraArgs[0]
 			routeArgs = extraArgs[1:]
 		}
-		cli.CmdAdd(root, routeArgs, mgr)
+		if err := cli.CmdAdd(root, routeArgs, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "remove", "rm":
 		root := ""
@@ -89,7 +110,10 @@ func main() {
 			root = extraArgs[0]
 			routeArgs = extraArgs[1:]
 		}
-		cli.CmdRemove(root, routeArgs, mgr)
+		if err := cli.CmdRemove(root, routeArgs, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
 
 	case "help", "":
 		cli.CmdHelp()

@@ -42,7 +42,7 @@ type Handle struct {
 	LogFile    *os.File
 	Stats      *Stats
 	Config     Config
-	WatchCount int
+	WatchCount atomic.Int64
 }
 
 var (
@@ -107,7 +107,7 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	}
 	debounce := time.Duration(debounceMs) * time.Millisecond
 
-	h.WatchCount = watchCount
+	h.WatchCount.Store(int64(watchCount))
 	fmt.Printf("%s Watching %d directories (%d kernel watches), debounce %v, %d patterns\n",
 		utils.Timestamp(), len(routes), watchCount, debounce, len(patterns))
 
