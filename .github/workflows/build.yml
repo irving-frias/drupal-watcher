@@ -5,11 +5,8 @@ on:
     branches: [feature/go-migration]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,24 +21,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Get version from composer.json
-        id: version
-        run: |
-          BASE=$(jq -r '.extra["drupal-watcher-version"] // "v1.0.0"' composer.json)
-          echo "tag=${BASE}.${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
-
       - name: Build (linux/amd64)
         run: go build -o drupal-watcher-linux-amd64 ./cmd/drupal-watcher
 
-      - name: Compress
-        run: gzip -c drupal-watcher-linux-amd64 > drupal-watcher-linux-amd64.gz
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: drupal-watcher ${{ steps.version.outputs.tag }}
-          files: |
-            drupal-watcher-linux-amd64.gz
-          fail_on_unmatched_files: true
-          generate_release_notes: true
+          name: drupal-watcher-linux-amd64
+          path: drupal-watcher-linux-amd64
+          compression-level: 0
