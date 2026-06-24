@@ -1,25 +1,41 @@
-import { P_ERROR, P_WARN, yellow, setColorsEnabled } from "./utils.js";
+import { P_ERROR, P_WARN, yellow, setColorsEnabled } from "./utils";
 import {
   cmdStart, cmdList, cmdStatus, cmdAdd, cmdRemove, cmdReset, cmdRestart, cmdHelp,
-} from "./commands.js";
-import { setCustomConfigPath, invalidateConfigCache } from "./config.js";
+} from "./commands";
+import { setCustomConfigPath, invalidateConfigCache, removePid } from "./config";
 
 const BIN = "vendor/bin/drupal-watcher";
 
-export function parseFlags(argv) {
+export interface ParseFlagsResult {
+  flags: {
+    abortOnDrushError: boolean
+    watchRoutes: string[]
+    noWatchRoutes: string[]
+    dryRun: boolean
+    verbose: boolean
+    noColors: boolean
+    debounce: number | null
+    noDotfiles: boolean
+    logFile: string | null
+    commandsPerPattern: Record<string, string>
+  }
+  extra: string[]
+}
+
+export function parseFlags(argv: string[]): ParseFlagsResult {
   const flags = {
     abortOnDrushError: false,
-    watchRoutes: [],
-    noWatchRoutes: [],
+    watchRoutes: [] as string[],
+    noWatchRoutes: [] as string[],
     dryRun: false,
     verbose: false,
     noColors: false,
-    debounce: null,
+    debounce: null as number | null,
     noDotfiles: false,
-    logFile: null,
-    commandsPerPattern: {},
+    logFile: null as string | null,
+    commandsPerPattern: {} as Record<string, string>,
   };
-  const extra = [];
+  const extra: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -61,7 +77,6 @@ export function parseFlags(argv) {
     } else if (arg.startsWith("--log-file=")) {
       flags.logFile = arg.slice(11);
     } else if (arg.startsWith("--config=")) {
-      // Handled globally in main()
       extra.push(arg);
     } else {
       extra.push(arg);
@@ -72,14 +87,21 @@ export function parseFlags(argv) {
 }
 
 export async function main() {
+  process.on("unhandledRejection", (reason: unknown) => {
+    console.error(`${P_ERROR} Unhandled rejection:`, reason);
+  });
+  process.on("uncaughtException", (err: Error) => {
+    console.error(`${P_ERROR} Uncaught exception:`, err.message);
+    removePid();
+    process.exit(1);
+  });
+
   const args = process.argv.slice(2);
 
-  // Handle --no-colors before any output
   if (args.includes("--no-colors")) {
     setColorsEnabled(false);
   }
 
-  // Handle --config before any command
   const configIdx = args.findIndex(a => a.startsWith("--config="));
   if (configIdx !== -1) {
     const p = args[configIdx].slice(9);
@@ -87,7 +109,6 @@ export async function main() {
     invalidateConfigCache();
   }
 
-  // Handle --version and -V as standalone (before command check)
   if (args[0] === "--version" || args[0] === "-V") {
     cmdHelp("version");
     return;
@@ -149,8 +170,8 @@ export async function main() {
         console.log(`  ${yellow(`Run '${BIN} help' to see available commands.`)}`);
         process.exit(1);
     }
-  } catch (err) {
-    console.error(`${P_ERROR} Unexpected error: ${err?.message || err}`);
+  } catch (err: unknown) {
+    console.error(`${P_ERROR} Unexpected error: ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   }
 }

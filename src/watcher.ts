@@ -1,18 +1,19 @@
 import path from "path";
-import { EXCLUDED_DIRS, timestamp, green, red, cyan, yellow, blue } from "./utils.js";
-import { getDrushCommand, getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush.js";
+import { EXCLUDED_DIRS, timestamp, green, red, cyan, yellow, blue } from "./utils";
+import { getDrushCommand, getDrushSpawnArgs, runDrush, runPostClearCommands } from "./drush";
+import type { WatcherConfig, WatcherHandle } from "./types";
 
 // --- Runtime stats ---
 export const stats = {
   changes: 0,
   clears: 0,
-  startTime: null,
-  filesChanged: new Set(),
+  startTime: null as number | null,
+  filesChanged: new Set<string>(),
 };
 
 // --- Debounce state ---
-let debounceTimer = null;
-let changeAccumulator = new Map();
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let changeAccumulator = new Map<string, number>();
 
 export function resetDebounce() {
   if (debounceTimer) {
@@ -22,11 +23,10 @@ export function resetDebounce() {
   changeAccumulator.clear();
 }
 
-function getCacheClearArgs(config, files) {
+function getCacheClearArgs(config: WatcherConfig, files: string[]) {
   const commandsPerPattern = config.commandsPerPattern || {};
-  // Sort longest-first so ".services.yml" beats ".yml"
   const patternEntries = Object.entries(commandsPerPattern).sort((a, b) => b[0].length - a[0].length);
-  const matchedCommands = new Set();
+  const matchedCommands = new Set<string>();
 
   for (const file of files) {
     for (const [pattern, command] of patternEntries) {
@@ -51,7 +51,7 @@ function getCacheClearArgs(config, files) {
   return getDrushSpawnArgs(config);
 }
 
-async function runCacheClear(config) {
+async function runCacheClear(config: WatcherConfig) {
   const pendingChanges = changeAccumulator;
   changeAccumulator = new Map();
   const files = Array.from(pendingChanges.keys());
@@ -74,7 +74,7 @@ async function runCacheClear(config) {
   await runPostClearCommands(config.postClearCommands || []);
 }
 
-function scheduleCacheClear(config) {
+function scheduleCacheClear(config: WatcherConfig) {
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
     debounceTimer = null;
@@ -95,7 +95,7 @@ export function printStats() {
   console.log(`  ${yellow("Cache clears:")} ${stats.clears}`);
 }
 
-function formatChangePath(rootPath, changePath) {
+function formatChangePath(rootPath: string, changePath: string) {
   const rel = path.relative(rootPath, path.resolve(rootPath, changePath));
   if (rel === changePath) return path.basename(changePath);
   if (rel.length < 40) return rel;
@@ -103,16 +103,16 @@ function formatChangePath(rootPath, changePath) {
 }
 
 // --- Watcher ---
-let watcherHandle = null;
+let watcherHandle: WatcherHandle | null = null;
 
 export function getWatcherHandle() {
   return watcherHandle;
 }
 
-export async function startWatcher(config) {
+export async function startWatcher(config: WatcherConfig) {
   const watchPaths = config.routes.map(r => path.join(process.cwd(), r));
 
-  function onChange(changePath, eventType) {
+  function onChange(changePath: string, _eventType?: string) {
     if (!changePath) return;
 
     const normalized = path.normalize(String(changePath));
@@ -132,23 +132,23 @@ export async function startWatcher(config) {
     scheduleCacheClear(config);
   }
 
-  function onError(err) {
+  function onError(err: Error) {
     console.error(`${timestamp()} ${red("✖")} Watcher error: ${err?.message || err}`);
   }
 
   try {
-    watcherHandle = Bun.watch({
+    watcherHandle = (Bun as any).watch({
       paths: watchPaths,
       recursive: true,
-      onChange: (info) => {
+      onChange: (info: { path?: string; type?: string }) => {
         if (info?.path) onChange(info.path, info.type);
       },
       onError,
-    });
+    }) as WatcherHandle;
   } catch {
     const { watch } = await import("fs");
     console.log(`${timestamp()} ${cyan("ℹ")} Bun.watch unavailable, falling back to fs.watch`);
-    const watchers = watchPaths.map(p => watch(p, { recursive: true }, (eventType, filename) => {
+    const watchers = watchPaths.map(p => watch(p, { recursive: true }, (eventType: string, filename: string | null) => {
       if (filename) onChange(filename, eventType);
     }));
     watcherHandle = {
@@ -165,8 +165,8 @@ export function stopWatcher() {
     try {
       if (typeof watcherHandle.stop === "function") watcherHandle.stop();
       else if (typeof watcherHandle.close === "function") watcherHandle.close();
-    } catch (e) {
-      console.warn(`Failed to stop watcher: ${e.message}`);
+    } catch (e: unknown) {
+      console.warn(`Failed to stop watcher: ${e instanceof Error ? e.message : e}`);
     }
     watcherHandle = null;
   }
