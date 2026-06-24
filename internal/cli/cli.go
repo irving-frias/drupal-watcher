@@ -13,6 +13,7 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/drush"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"golang.org/x/sys/unix"
 )
 
 var Version = "0.1.0" // overridden via ldflags at build time
@@ -317,15 +318,9 @@ Options:
 }
 
 func IsPidRunning(pid int) bool {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
 	// On Unix, sending signal 0 checks if the process exists
-	if err := proc.Signal(os.Signal(syscall.Signal(0))); err != nil {
-		return false
-	}
-	return true
+	err := unix.Kill(pid, unix.Signal(0))
+	return err == nil
 }
 
 func FormatDuration(d time.Duration) string {

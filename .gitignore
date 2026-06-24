@@ -3,7 +3,7 @@ vendor/
 
 # Build output
 bin/drupal-watcher-go
-drupal-watcher
+/drupal-watcher
 
 # Runtime
 watcher.config.json
