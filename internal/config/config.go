@@ -211,6 +211,12 @@ func (m *Manager) LoadConfig(root string) (Config, error) {
 	}
 
 	cfg := m.ValidateConfig(parsed, r)
+
+	// Save config if migration fixed outdated commands, so the fix persists
+	if commandsNeedMigration(parsed.CommandsPerPattern) {
+		m.SaveConfig(cfg, r)
+	}
+
 	m.cache[r] = &cacheEntry{Config: &cfg}
 	return cfg, nil
 }
@@ -258,7 +264,46 @@ func (m *Manager) ValidateConfig(cfg Config, root string) Config {
 	for i, r := range cfg.Routes {
 		cfg.Routes[i] = strings.TrimRight(filepath.ToSlash(filepath.Clean(r)), "/")
 	}
+	// Auto-migrate known outdated commands
+	cfg.CommandsPerPattern = migrateCommands(cfg.CommandsPerPattern)
 	return cfg
+}
+
+var commandMigrations = map[string]string{
+	"cc twig":     "cc render",
+	"cc bin twig": "cc render",
+	"cc all":      "cr",
+}
+
+func commandsNeedMigration(cmds map[string]string) bool {
+	if cmds == nil {
+		return false
+	}
+	for _, cmd := range cmds {
+		if replacement, ok := commandMigrations[cmd]; ok && replacement != cmd {
+			return true
+		}
+	}
+	return false
+}
+
+func migrateCommands(cmds map[string]string) map[string]string {
+	if cmds == nil {
+		return cmds
+	}
+	migrated := false
+	for pattern, cmd := range cmds {
+		if replacement, ok := commandMigrations[cmd]; ok && replacement != cmd {
+			cmds[pattern] = replacement
+			fmt.Printf("%s  %s → %s\n", utils.P_INFO, cmd, replacement)
+			migrated = true
+		}
+	}
+	if migrated {
+		fmt.Printf("%s Auto-migrated outdated CommandsPerPattern.\n", utils.P_INFO)
+		fmt.Printf("%s Delete %s for fresh defaults.\n", utils.P_INFO, utils.Cyan("watcher.config.json"))
+	}
+	return cmds
 }
 
 func (m *Manager) SaveConfig(cfg Config, root string) error {
