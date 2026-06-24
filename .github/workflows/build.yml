@@ -3,7 +3,11 @@ name: Build
 on:
   push:
     branches: [feature/go-migration]
+    tags: ["v*"]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -24,8 +28,22 @@ jobs:
       - name: Build (linux/amd64)
         run: go build -o drupal-watcher-linux-amd64 ./cmd/drupal-watcher
 
+      - name: Compress
+        run: gzip -c drupal-watcher-linux-amd64 > drupal-watcher-linux-amd64.gz
+
       - uses: actions/upload-artifact@v4
+        if: github.ref_type != 'tag'
         with:
           name: drupal-watcher-linux-amd64
           path: drupal-watcher-linux-amd64
           compression-level: 0
+
+      - name: Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: drupal-watcher ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: |
+            drupal-watcher-linux-amd64.gz
+          fail_on_unmatched_files: true
