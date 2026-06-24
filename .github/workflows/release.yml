@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags:
       - "v*"
 
@@ -9,12 +10,31 @@ permissions:
   contents: write
 
 jobs:
-  goreleaser:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Bump version (auto-tag)
+        id: tag
+        uses: anothrNick/github-tag-action@v1
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WITH_V: true
+          DEFAULT_BUMP: patch
+          RELEASE_BRANCHES: main
+
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ steps.tag.outputs.tag }}" >> $GITHUB_OUTPUT
+          fi
 
       - uses: actions/setup-go@v5
         with:
@@ -25,7 +45,8 @@ jobs:
 
       - name: Cross-compile
         run: |
-          LDFLAGS="-X github.com/irving-frias/drupal-watcher/internal/cli.Version=${GITHUB_REF_NAME#v}"
+          VERSION="${{ steps.version.outputs.tag }}"
+          LDFLAGS="-X github.com/irving-frias/drupal-watcher/internal/cli.Version=${VERSION#v}"
           mkdir -p dist
           GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-linux-amd64" ./cmd/drupal-watcher
           GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/drupal-watcher-linux-arm64" ./cmd/drupal-watcher
@@ -48,5 +69,6 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
           files: dist/*
           generate_release_notes: true

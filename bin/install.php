@@ -9,10 +9,25 @@
 
 $installDir = __DIR__;
 
-// Read version from the package's composer.json
-$composerJson = json_decode(file_get_contents($installDir . '/../composer.json'), true);
-$version = $composerJson['extra']['drupal-watcher-version'] ?? getenv('DRUPAL_WATCHER_VERSION') ?: 'v1.0.0-beta4';
 $repo = 'irving-frias/drupal-watcher';
+
+// Get latest version from GitHub API (with composer.json fallback)
+$version = getenv('DRUPAL_WATCHER_VERSION');
+if (!$version) {
+  $apiUrl = "https://api.github.com/repos/{$repo}/releases/latest";
+  $apiCtx = stream_context_create(['http' => ['header' => "User-Agent: Composer\r\n", 'timeout' => 5]]);
+  $apiData = @file_get_contents($apiUrl, false, $apiCtx);
+  if ($apiData) {
+    $release = json_decode($apiData, true);
+    if (isset($release['tag_name'])) {
+      $version = $release['tag_name'];
+    }
+  }
+}
+if (!$version) {
+  $composerJson = json_decode(file_get_contents($installDir . '/../composer.json'), true);
+  $version = $composerJson['extra']['drupal-watcher-version'] ?? 'v1.0.0';
+}
 
 $targetPath = $installDir . '/drupal-watcher-go';
 
