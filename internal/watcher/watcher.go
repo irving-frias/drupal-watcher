@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -29,9 +30,9 @@ type Config interface {
 }
 
 type Stats struct {
-	Changes    atomic.Int64
-	Clears     atomic.Int64
-	StartTime  time.Time
+	Changes         atomic.Int64
+	Clears          atomic.Int64
+	StartTime       time.Time
 	TotalDebounceMs atomic.Int64
 }
 
@@ -48,6 +49,20 @@ var (
 	pending  atomic.Bool
 	lastFile string
 )
+
+// dirsSkippedByDefault are known high-cardinality directories unlikely to contain
+// files that need drush cache clears. Skipping them reduces inotify watches.
+var dirsSkippedByDefault = []string{
+	"node_modules", ".git", ".svn", ".hg",
+	"contrib",      // drupal contrib modules (massive)
+	"vendor",       // composer deps
+	"bower_components",
+	"files",        // drupal files dir
+	"css",          // compiled assets (not source)
+	"js",           // compiled/minified js
+	"images",
+	"fonts",
+}
 
 func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	fsnWatcher, err := fsnotify.NewWatcher()
@@ -66,12 +81,22 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	routes := cfg.GetRoutes()
 	patterns := cfg.GetPatterns()
 	exclude := cfg.GetExcludePatterns()
+	skipDirs := append(append([]string{}, dirsSkippedByDefault...), exclude...)
 
-	watchDirs := gatherDirs(routes, exclude)
+	// On macOS FSEvents watches recursively by default (one kernel watch per route).
+	// On Linux inotify requires every directory to be added individually.
+	recursive := runtime.GOOS == "darwin"
+
+	watchDirs := gatherDirs(routes, skipDirs)
 	for _, dir := range watchDirs {
 		if err := fsnWatcher.Add(dir); err != nil {
 			fmt.Printf("%s Failed to watch %s: %v\n", utils.P_WARN, utils.Cyan(dir), err)
 		}
+	}
+
+	watchCount := len(watchDirs)
+	if recursive {
+		watchCount = len(routes) // FSEvents tracks entire trees as 1 watch each
 	}
 
 	debounceMs := cfg.GetDebounce()
@@ -80,8 +105,8 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	}
 	debounce := time.Duration(debounceMs) * time.Millisecond
 
-	fmt.Printf("%s Watching %d directories, debounce %v, %d patterns\n",
-		utils.Timestamp(), len(watchDirs), debounce, len(patterns))
+	fmt.Printf("%s Watching %d directories (%d kernel watches), debounce %v, %d patterns\n",
+		utils.Timestamp(), len(routes), watchCount, debounce, len(patterns))
 
 	var timer *time.Timer
 	var debounceMu sync.Mutex
@@ -96,6 +121,19 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 				if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Chmod) == 0 {
 					continue
 				}
+
+				// On Linux, add newly created directories to the watcher
+				if event.Op&fsnotify.Create != 0 && runtime.GOOS == "linux" {
+					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
+						base := filepath.Base(event.Name)
+						if !isSkippedDir(base, skipDirs) {
+							if err := fsnWatcher.Add(event.Name); err == nil {
+								watchCount++
+							}
+						}
+					}
+				}
+
 				if !matchPattern(event.Name, patterns) || matchExclude(event.Name, exclude) {
 					continue
 				}
@@ -220,28 +258,46 @@ func matchExclude(name string, excludes []string) bool {
 	return false
 }
 
-func gatherDirs(routes []string, excludes []string) []string {
-	dirSet := make(map[string]bool)
+func isSkippedDir(name string, skipDirs []string) bool {
+	for _, s := range skipDirs {
+		if name == s {
+			return true
+		}
+	}
+	return false
+}
+
+// gatherDirs returns directories to watch.
+// On macOS (FSEvents) returns only the top-level routes (recursive by default).
+// On Linux (inotify) walks each route and adds every subdirectory.
+func gatherDirs(routes []string, skipDirs []string) []string {
+	recursive := runtime.GOOS == "darwin"
+	dirSet := make(map[string]bool, len(routes))
+
 	for _, route := range routes {
 		abs, err := filepath.Abs(route)
 		if err != nil {
 			continue
 		}
+
+		if recursive {
+			dirSet[abs] = true
+			continue
+		}
+
 		filepath.WalkDir(abs, func(path string, d os.DirEntry, err error) error {
 			if err != nil || !d.IsDir() {
 				return nil
 			}
-			base := d.Name()
-			for _, ex := range excludes {
-				if base == ex || strings.Contains(path, "/"+ex+"/") || strings.HasSuffix(path, "/"+ex) {
-					return filepath.SkipDir
-				}
+			if isSkippedDir(d.Name(), skipDirs) {
+				return filepath.SkipDir
 			}
 			dirSet[path] = true
 			return nil
 		})
 	}
-	var dirs []string
+
+	dirs := make([]string, 0, len(dirSet))
 	for d := range dirSet {
 		dirs = append(dirs, d)
 	}
