@@ -123,10 +123,7 @@ func main() {
 		}
 
 	case "tui":
-		root := ""
-		if len(extraArgs) > 0 {
-			root = extraArgs[0]
-		}
+		root := getRootFlag(flags, extraArgs)
 		if err := cli.CmdTui(root, mgr); err != nil {
 			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
 			os.Exit(1)
@@ -139,6 +136,16 @@ func main() {
 		cli.CmdHelp()
 		os.Exit(1)
 	}
+}
+
+func getRootFlag(flags map[string]interface{}, extraArgs []string) string {
+	if r, ok := flags["root"].(string); ok && r != "" {
+		return r
+	}
+	if len(extraArgs) > 0 {
+		return extraArgs[0]
+	}
+	return ""
 }
 
 func parseFlags(args []string) (command string, flags map[string]interface{}, extraArgs []string) {
@@ -202,6 +209,13 @@ func parseFlags(args []string) (command string, flags map[string]interface{}, ex
 			if json.Unmarshal([]byte(args[i]), &cpp) == nil {
 				flags["commands-per-pattern"] = cpp
 			}
+
+		case strings.HasPrefix(arg, "--root="):
+			flags["root"] = strings.TrimPrefix(arg, "--root=")
+
+		case arg == "--root" && i+1 < len(args):
+			i++
+			flags["root"] = args[i]
 
 		default:
 			positional = append(positional, arg)

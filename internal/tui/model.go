@@ -49,12 +49,17 @@ func NewModel(w *watcher.Handle) *Model {
 	ti.CharLimit = 256
 	ti.Width = 50
 
+	vp := viewport.New(78, 20)
+	vp.YPosition = 4
+
 	return &Model{
 		Watcher:  w,
 		events:   make([]eventLine, 0, eventBufferSize),
 		eventCap: eventBufferSize,
+		viewport: vp,
 		input:    ti,
 		help:     help.New(),
+		ready:    true,
 	}
 }
 
@@ -77,15 +82,11 @@ func listenForEvents(w *watcher.Handle) tea.Cmd {
 		if w.EventCh == nil {
 			return nil
 		}
-		select {
-		case evt, ok := <-w.EventCh:
-			if !ok {
-				return nil
-			}
-			return watcherEventMsg{Event: evt}
-		default:
+		evt, ok := <-w.EventCh
+		if !ok {
 			return nil
 		}
+		return watcherEventMsg{Event: evt}
 	}
 }
 

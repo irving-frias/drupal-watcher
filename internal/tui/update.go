@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
 )
@@ -34,11 +33,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		if !m.ready {
-			m.viewport = viewport.New(78, m.height-8)
-			m.viewport.YPosition = 4
-			m.ready = true
-		}
 		m.viewport.Width = msg.Width - 4
 		m.viewport.Height = msg.Height - 8
 		return m, nil
@@ -77,7 +71,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Running:    true,
 		}
 		m.viewport.SetContent(m.renderEvents())
-		return m, tea.Batch(tickCmd(), listenForEvents(m.Watcher))
+		return m, tickCmd()
 
 	case watcherEventMsg:
 		evt := msg.Event
