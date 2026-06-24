@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/irving-frias/drupal-watcher/internal/cli"
@@ -28,6 +29,12 @@ func main() {
 	// Handle --config globally
 	if cfgPath, ok := flags["config"].(string); ok && cfgPath != "" {
 		mgr.SetCustomConfigPath(cfgPath)
+	}
+
+	// Handle --version globally before command dispatch
+	if _, ok := flags["version"]; ok {
+		fmt.Printf("drupal-watcher %s (go %s)\n", cli.PkgVersion(), strings.TrimPrefix(runtime.Version(), "go"))
+		return
 	}
 
 	switch command {
@@ -115,8 +122,17 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "tui":
+		root := ""
+		if len(extraArgs) > 0 {
+			root = extraArgs[0]
+		}
+		if err := cli.CmdTui(root, mgr); err != nil {
+			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			os.Exit(1)
+		}
+
 	case "help", "":
-		cli.CmdHelp()
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
