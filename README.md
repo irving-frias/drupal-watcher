@@ -68,15 +68,22 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
   "patterns": [".php", ".module", ".inc", ".yml", ".html.twig"],
   "debounce": 800,
   "commandsPerPattern": {
-    ".html.twig": "cc bin twig",
-    ".theme": "cc plugin",
+    ".html.twig": "cc render",
+    ".twig": "cc render",
+    ".theme": "cc theme-registry",
     ".module": "cc plugin",
     ".inc": "cc plugin",
-    ".yml": "cc plugin",
     ".php": "cc plugin",
+    ".yml": "cc plugin",
     ".info.yml": "cr",
-    ".services.yml": "cr"
-  }
+    ".services.yml": "cr",
+    ".routing.yml": "cr",
+    ".permissions.yml": "cr",
+    ".links.menu.yml": "cr",
+    ".css": "cc css-js",
+    ".js": "cc css-js"
+  },
+  "postClearCommands": []
 }
 ```
 
@@ -111,16 +118,44 @@ The watcher scans for `docroot/`, `web/`, `public/`, or `html/` directories cont
 
 Different file types run different drush commands:
 
-| Extension      | Drush command       |
-|----------------|---------------------|
-| `.html.twig`   | `cc bin twig`       |
-| `.theme`       | `cc plugin`         |
-| `.module`      | `cc plugin`         |
-| `.inc`         | `cc plugin`         |
-| `.yml`         | `cc plugin`         |
-| `.info.yml`    | `cr`                |
-| `.services.yml`| `cr`                |
-| `.php`         | `cc plugin`         |
+| Extension          | Drush command       |
+|--------------------|---------------------|
+| `.html.twig`       | `cc render`         |
+| `.twig`            | `cc render`         |
+| `.theme`           | `cc theme-registry` |
+| `.module`          | `cc plugin`         |
+| `.inc`             | `cc plugin`         |
+| `.php`             | `cc plugin`         |
+| `.yml`             | `cc plugin`         |
+| `.info.yml`        | `cr`                |
+| `.services.yml`    | `cr`                |
+| `.routing.yml`     | `cr`                |
+| `.permissions.yml` | `cr`                |
+| `.links.menu.yml`  | `cr`                |
+| `.css`             | `cc css-js`         |
+| `.js`              | `cc css-js`         |
+
+### Twig debug mode (development only)
+
+Enable Twig development mode without touching settings.php:
+
+```bash
+drush twig:debug on   # enables Twig debug + auto-disable cache
+drush twig:debug off  # restores production settings
+```
+
+Available since Drush 12.1+. Handles `twig.config` settings automatically — no manual cache clears needed.
+
+### Pre-warming caches (Drush 13+)
+
+`drush cache:warm` pre-builds caches so the first request isn't slow after a rebuild.
+This is optional — add it to `postClearCommands` if you want automatic warming:
+
+```json
+"postClearCommands": ["drush cache:warm"]
+```
+
+> **Note:** Warming can be slow on large sites. Not recommended during active development.
 
 ## Development (requires Go)
 
