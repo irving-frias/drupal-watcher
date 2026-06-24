@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [feature/go-migration]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Test
+        run: go test -count=1 ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build (linux/amd64)
+        run: go build -o drupal-watcher-linux-amd64 ./cmd/drupal-watcher
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drupal-watcher-linux-amd64
+          path: drupal-watcher-linux-amd64
+          compression-level: 0
