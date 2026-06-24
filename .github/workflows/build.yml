@@ -3,14 +3,13 @@ name: Build
 on:
   push:
     branches: [feature/go-migration]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,25 +24,24 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Get version from composer.json
+        id: version
+        run: |
+          BASE=$(jq -r '.extra["drupal-watcher-version"] // "v1.0.0"' composer.json)
+          echo "tag=${BASE}.${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
       - name: Build (linux/amd64)
         run: go build -o drupal-watcher-linux-amd64 ./cmd/drupal-watcher
 
       - name: Compress
         run: gzip -c drupal-watcher-linux-amd64 > drupal-watcher-linux-amd64.gz
 
-      - uses: actions/upload-artifact@v4
-        if: github.ref_type != 'tag'
-        with:
-          name: drupal-watcher-linux-amd64
-          path: drupal-watcher-linux-amd64
-          compression-level: 0
-
-      - name: Release
-        if: github.ref_type == 'tag'
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: drupal-watcher ${{ github.ref_name }}
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: drupal-watcher ${{ steps.version.outputs.tag }}
           files: |
             drupal-watcher-linux-amd64.gz
           fail_on_unmatched_files: true
+          generate_release_notes: true
