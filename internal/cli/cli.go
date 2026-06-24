@@ -2,9 +2,11 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -20,11 +22,10 @@ var Version = "0.1.0" // overridden via ldflags at build time
 
 func PkgVersion() string { return Version }
 
-func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
+func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mgr *config.Manager) error {
 	cfg, err := mgr.LoadConfig(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("%w", err)
 	}
 
 	// Override debounce from flag
@@ -42,7 +43,7 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 	} else if pidStatus != nil {
 		fmt.Printf("%s Already running (PID %s). Use %s to stop first.\n",
 			utils.P_WARN, utils.Cyan(fmt.Sprintf("%v", pidStatus)), utils.Green("drupal-watcher reset"))
-		os.Exit(0)
+		return nil
 	}
 
 	// Drush health check
@@ -52,8 +53,7 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 
 	// Write PID
 	if err := config.WritePid(root); err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to write PID: %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to write PID: %w", err)
 	}
 	defer config.RemovePid(root)
 
@@ -72,9 +72,6 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 		defer logFile.Close()
 	}
 
-	// Set up multi-writer for structured output if log file
-	// (In Go, we can't easily intercept fmt.Print. For now, log file is separate.)
-
 	// Handle dotfiles
 	noDotfiles := false
 	if nd, ok := flags["no-dotfiles"].(bool); ok && nd {
@@ -87,12 +84,11 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 	// Start watcher
 	h, err := watcher.Start(cfg, logFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to start watcher: %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to start watcher: %w", err)
 	}
 
 	// Show startup info
-	utils.PrintMemStats(utils.GetMemStats(h.WatchCount))
+	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 	fmt.Printf("  Routes: %s\n", utils.Cyan(strings.Join(cfg.Routes, ", ")))
 	fmt.Printf("  Patterns: %s\n", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
 	fmt.Printf("%s Watcher started. PID %d. Type %s for commands.\n",
@@ -100,12 +96,7 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 
 	// Interactive stdin commands
 	cmdCh := make(chan string)
-	go func() {
-		scanner := bufio.NewScanner(os.Stdin)
-		for scanner.Scan() {
-			cmdCh <- strings.TrimSpace(scanner.Text())
-		}
-	}()
+	go stdinReader(ctx, cmdCh)
 
 	// Signal handling
 	sigCh := make(chan os.Signal, 1)
@@ -119,6 +110,9 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 			stopped = true
 
 		case <-h.StopCh:
+			stopped = true
+
+		case <-ctx.Done():
 			stopped = true
 
 		case input := <-cmdCh:
@@ -138,7 +132,11 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 					fmt.Println("  Usage: add <route> [pattern]")
 					break
 				}
-				route := parts[1]
+				route := sanitizeRoute(parts[1])
+				if route == "" {
+					fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
+					break
+				}
 				pattern := ""
 				if len(parts) > 2 {
 					pattern = parts[2]
@@ -158,7 +156,11 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 					fmt.Println("  Usage: remove <route>")
 					break
 				}
-				route := parts[1]
+				route := sanitizeRoute(parts[1])
+				if route == "" {
+					fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
+					break
+				}
 				newRoutes := make([]string, 0, len(cfg.Routes))
 				for _, r := range cfg.Routes {
 					if r != route {
@@ -190,7 +192,7 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 				stopped = true
 			case "monitor", "m":
 				printInteractiveStatus(h)
-				monitorLoop(h)
+				monitorLoop(ctx, h)
 			case "help":
 				printInteractiveHelp()
 			default:
@@ -211,14 +213,44 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 	}
 	fmt.Printf("\n%s Watcher stopped. %d changes, %d clears, uptime %v\n",
 		statusIcon, changes, clears, FormatDuration(uptime))
-	utils.PrintMemStats(utils.GetMemStats(h.WatchCount))
+	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
+	return nil
 }
 
-func CmdList(root string, mgr *config.Manager) {
+func stdinReader(ctx context.Context, cmdCh chan<- string) {
+	scanner := bufio.NewScanner(os.Stdin)
+	result := make(chan string, 1)
+	defer close(result)
+	for {
+		go func() {
+			if scanner.Scan() {
+				select {
+				case result <- strings.TrimSpace(scanner.Text()):
+				case <-ctx.Done():
+				}
+			}
+		}()
+		select {
+		case <-ctx.Done():
+			return
+		case line := <-result:
+			cmdCh <- line
+		}
+	}
+}
+
+func sanitizeRoute(route string) string {
+	cleaned := filepath.Clean(route)
+	if !filepath.IsAbs(cleaned) {
+		return ""
+	}
+	return cleaned
+}
+
+func CmdList(root string, mgr *config.Manager) error {
 	cfg, err := mgr.LoadConfig(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to load config: %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	utils.PrintHeader("Active Drupal Watcher")
@@ -239,16 +271,17 @@ func CmdList(root string, mgr *config.Manager) {
 		}
 	}
 	utils.PrintSection("Configuration", items)
+	return nil
 }
 
-func CmdMonitor(root string, mgr *config.Manager) {
+func CmdMonitor(root string, mgr *config.Manager) error {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
 
 	done := make(chan struct{}, 1)
 
-	// Print initial status, then refresh every 2s
+	// Print initial status, then refresh every 1s
 	printMonitorStatus(root, mgr)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
@@ -263,9 +296,9 @@ func CmdMonitor(root string, mgr *config.Manager) {
 			printMonitorStatus(root, mgr)
 			fmt.Println("  Monitoring stopped.")
 			close(done)
-			return
+			return nil
 		case <-done:
-			return
+			return nil
 		}
 	}
 }
@@ -311,22 +344,21 @@ func printMonitorStatus(root string, mgr *config.Manager) {
 	fmt.Println("  Press Ctrl+C to stop monitoring.")
 }
 
-func CmdStatus(root string, mgr *config.Manager) {
+func CmdStatus(root string, mgr *config.Manager) error {
 	pidStatus, err := config.CheckPid(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to check PID: %w", err)
 	}
 
 	if pidStatus == nil {
 		fmt.Printf("%s Drupal Watcher is not running.\n", utils.Yellow("●"))
-		os.Exit(0)
+		return nil
 	}
 
 	if pidStatus == "stale" {
 		fmt.Printf("%s Drupal Watcher is stopped (stale PID). Run %s to clean up.\n",
 			utils.Red("●"), utils.Green("drupal-watcher reset"))
-		os.Exit(0)
+		return nil
 	}
 
 	pidStr := fmt.Sprintf("%v", pidStatus)
@@ -347,20 +379,21 @@ func CmdStatus(root string, mgr *config.Manager) {
 		fmt.Printf("%s Drupal Watcher is stopped (stale PID). Run %s to clean up.\n",
 			utils.Red("●"), utils.Green("drupal-watcher reset"))
 	}
+	return nil
 }
 
-func CmdAdd(root string, args []string, mgr *config.Manager) {
+func CmdAdd(root string, args []string, mgr *config.Manager) error {
 	cfg, err := mgr.LoadConfig(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("%w", err)
 	}
 
 	// Parse route:pattern pairs or just routes
 	for _, arg := range args {
 		parts := strings.SplitN(arg, ":", 2)
-		route := parts[0]
+		route := sanitizeRoute(parts[0])
 		if route == "" {
+			fmt.Printf("  %s Invalid route: %s\n", utils.P_WARN, parts[0])
 			continue
 		}
 		cfg.Routes = append(cfg.Routes, route)
@@ -374,16 +407,15 @@ func CmdAdd(root string, args []string, mgr *config.Manager) {
 	}
 
 	if err := mgr.SaveConfig(cfg, root); err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to save config: %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to save config: %w", err)
 	}
+	return nil
 }
 
-func CmdRemove(root string, args []string, mgr *config.Manager) {
+func CmdRemove(root string, args []string, mgr *config.Manager) error {
 	cfg, err := mgr.LoadConfig(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("%w", err)
 	}
 
 	removedRoutes := 0
@@ -391,7 +423,11 @@ func CmdRemove(root string, args []string, mgr *config.Manager) {
 
 	for _, arg := range args {
 		parts := strings.SplitN(arg, ":", 2)
-		route := parts[0]
+		route := sanitizeRoute(parts[0])
+		if route == "" {
+			fmt.Printf("  %s Invalid route: %s\n", utils.P_WARN, parts[0])
+			continue
+		}
 
 		// Remove route
 		newRoutes := make([]string, 0, len(cfg.Routes))
@@ -429,16 +465,15 @@ func CmdRemove(root string, args []string, mgr *config.Manager) {
 	}
 
 	if err := mgr.SaveConfig(cfg, root); err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to save config: %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to save config: %w", err)
 	}
+	return nil
 }
 
-func CmdReset(root string, mgr *config.Manager) {
+func CmdReset(root string, mgr *config.Manager) error {
 	pidStatus, err := config.CheckPid(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
-		os.Exit(1)
+		return fmt.Errorf("failed to check PID: %w", err)
 	}
 
 	if pidStatus != nil { // PID exists (running or stale)
@@ -460,12 +495,15 @@ func CmdReset(root string, mgr *config.Manager) {
 	config.RemovePid(root)
 	mgr.InvalidateConfigCache(root)
 	fmt.Printf("%s Reset complete. PID and config cache cleared.\n", utils.P_SUCCESS)
+	return nil
 }
 
-func CmdRestart(root string, flags map[string]interface{}, mgr *config.Manager) {
-	CmdReset(root, mgr)
+func CmdRestart(root string, flags map[string]interface{}, mgr *config.Manager) error {
+	if err := CmdReset(root, mgr); err != nil {
+		return err
+	}
 	time.Sleep(500 * time.Millisecond)
-	CmdStart(root, flags, mgr)
+	return CmdStart(context.Background(), root, flags, mgr)
 }
 
 func CmdHelp() {
@@ -508,18 +546,29 @@ func printInteractiveStatus(h *watcher.Handle) {
 	fmt.Printf("  %s Watcher running. PID %d\n", utils.Green("●"), os.Getpid())
 	fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
 		h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
-	utils.PrintMemStats(utils.GetMemStats(h.WatchCount))
+	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 }
 
-func monitorLoop(h *watcher.Handle) {
+func monitorLoop(ctx context.Context, h *watcher.Handle) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		scanner := bufio.NewScanner(os.Stdin)
-		scanner.Scan() // wait for any line
-		close(done)
+		line := make(chan struct{}, 1)
+		go func() {
+			scanner.Scan()
+			close(line)
+		}()
+		select {
+		case <-line:
+		case <-ctx.Done():
+		}
 	}()
 
 	fmt.Println("  Monitor mode (press Enter to stop)...")
@@ -534,6 +583,8 @@ func monitorLoop(h *watcher.Handle) {
 			printInteractiveStatus(h)
 			return
 		case <-h.StopCh:
+			return
+		case <-ctx.Done():
 			return
 		}
 	}

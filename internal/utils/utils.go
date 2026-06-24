@@ -120,10 +120,10 @@ func PrintDrushHealthResult(h DrushHealth) {
 
 type MemStats struct {
 	AllocMB    float64
-	WatchCount int
+	WatchCount int64
 }
 
-func GetMemStats(watchCount int) MemStats {
+func GetMemStats(watchCount int64) MemStats {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	return MemStats{
