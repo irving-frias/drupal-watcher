@@ -11,8 +11,7 @@
   },
   "scripts": {
     "post-install-cmd": [
-      "@php -r \"echo 'Building Drupal Watcher binary...\\n';\"",
-      "cd vendor/irving-frias/drupal-watcher && go build -o bin/drupal-watcher-go ./cmd/drupal-watcher 2>/dev/null || @php -r \"echo '⚠ Go not found. Run \\'go build -o bin/drupal-watcher-go ./cmd/drupal-watcher\\' to compile, or download a pre-built binary from https://github.com/irving-frias/drupal-watcher/releases\\n';\""
+      "@php vendor/irving-frias/drupal-watcher/bin/install.php"
     ]
   },
   "support": {
