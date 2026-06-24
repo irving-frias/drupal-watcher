@@ -1,0 +1,93 @@
+package utils_test
+
+import (
+	"testing"
+
+	"github.com/irving-frias/drupal-watcher/internal/utils"
+)
+
+func TestSetColorsEnabled(t *testing.T) {
+	utils.SetColorsEnabled(false)
+	if utils.ColorsEnabled() {
+		t.Error("expected colors disabled")
+	}
+
+	utils.SetColorsEnabled(true)
+	if !utils.ColorsEnabled() {
+		t.Error("expected colors enabled")
+	}
+}
+
+func TestColorFuncs(t *testing.T) {
+	utils.SetColorsEnabled(true)
+
+	if utils.Red("test") == "test" {
+		t.Error("expected colored output")
+	}
+	if utils.Green("test") == "test" {
+		t.Error("expected colored output")
+	}
+	if utils.Bold("test") == "test" {
+		t.Error("expected bold output")
+	}
+	if utils.Dim("test") == "test" {
+		t.Error("expected dim output")
+	}
+
+	utils.SetColorsEnabled(false)
+	if utils.Red("test") != "test" {
+		t.Error("expected plain output when colors disabled")
+	}
+	if utils.Green("test") != "test" {
+		t.Error("expected plain output when colors disabled")
+	}
+}
+
+func TestTimestamp(t *testing.T) {
+	ts := utils.Timestamp()
+	if len(ts) == 0 {
+		t.Error("expected non-empty timestamp")
+	}
+}
+
+func TestPrintHeader(t *testing.T) {
+	// Should not panic
+	utils.PrintHeader("test header")
+}
+
+func TestPrintSection(t *testing.T) {
+	items := []utils.SectionItem{
+		[2]string{"Key", "Value"},
+		"Plain string",
+	}
+	utils.PrintSection("Test", items)
+}
+
+func TestDefaultPatterns(t *testing.T) {
+	patterns := utils.DefaultPatterns
+	if len(patterns) == 0 {
+		t.Error("expected default patterns")
+	}
+	found := false
+	for _, p := range patterns {
+		if p == ".php" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected .php in default patterns")
+	}
+}
+
+func TestPossibleDocroots(t *testing.T) {
+	if len(utils.PossibleDocroots) == 0 {
+		t.Error("expected possible docroots")
+	}
+}
+
+func TestExcludedDirs(t *testing.T) {
+	if len(utils.ExcludedDirs) == 0 {
+		t.Error("expected excluded dirs")
+	}
+}

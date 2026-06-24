@@ -1,0 +1,27 @@
+#!/bin/bash
+# Drupal Watcher — binary launcher
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+BINARY="$DIR/drupal-watcher-go"
+
+install_binary() {
+  echo "Downloading Drupal Watcher binary..." >&2
+  php "$DIR/install.php"
+}
+
+if [ ! -x "$BINARY" ]; then
+  install_binary
+  if [ ! -x "$BINARY" ]; then
+    echo "Error: failed to install Drupal Watcher." >&2
+    echo "Download manually from: https://github.com/irving-frias/drupal-watcher/releases" >&2
+    echo "Place it at: $BINARY" >&2
+    exit 1
+  fi
+fi
+
+exec "$BINARY" "$@"

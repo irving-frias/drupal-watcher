@@ -9,9 +9,12 @@
   "require": {
     "php": ">=8.1"
   },
+  "extra": {
+    "drupal-watcher-version": "v1.0.0"
+  },
   "scripts": {
     "post-install-cmd": [
-      "@php -r \"echo '🚀 Drupal Watcher installed. Run \\'vendor/bin/drupal-watcher list\\' to get started.\\n';\""
+      "@php vendor/irving-frias/drupal-watcher/bin/install.php"
     ]
   },
   "support": {

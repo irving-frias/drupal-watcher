@@ -1,27 +1,48 @@
-# Drupal Watcher — Project Guide
+# Drupal Watcher — Project Guide (Go Migration)
 
 ## Commands
-- **Test**: `bun test` (41 tests)
-- **Watch mode**: `bun run test:watch`
-- **Run**: `vendor/bin/drupal-watcher <command>` or `bun run bin/drupal-watcher <command>`
-- **Build standalone**: `bun run build`
+- **Test**: `go test ./...`
+- **Fresh test**: `go test -count=1 ./...`
+- **Vet**: `go vet ./...`
+- **Build**: `go build -o drupal-watcher ./cmd/drupal-watcher`
+- **Run**: `./bin/drupal-watcher <command>` or `go run ./cmd/drupal-watcher <command>`
 
 ## Project structure
-- `bin/drupal-watcher` — Thin entry point (shebang + import main)
-- `src/main.js` — Arg parsing (`parseFlags`) and dispatch (switch-based)
-- `src/config.js` — Config load/save, Drupal root detection, PID management
-- `src/commands.js` — All CLI commands (start, list, status, add, remove, reset, help)
-- `src/drush.js` — Drush command resolution and execution
-- `src/watcher.js` — File watcher, debounce, PID enforcement, runtime stats
-- `src/utils.js` — Color constants, Drupal path lists, shared helpers
-- `test/config.test.ts` — Unit tests for config, drush, and main modules
+- `bin/drupal-watcher` — Shell launcher (compiles Go binary if missing, then execs)
+- `cmd/drupal-watcher/main.go` — Entry point, arg parsing (`parseFlags`), dispatch (switch-based)
+- `internal/config/config.go` — `Manager` struct with per-root cache, config load/save, Drupal root detection, PID management
+- `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
+- `internal/watcher/watcher.go` — fsnotify file watcher, debounce, config-aware cache clear args
+- `internal/cli/cli.go` — All CLI commands (`CmdStart`, `CmdList`, `CmdStatus`, etc.)
+- `internal/utils/utils.go` — Color helpers (ANSI with toggle), prefix constants, shared helpers
+- All config package tests in `internal/config/config_test.go`
+- All cli package tests in `internal/cli/cli_test.go`
+- All drush package tests in `internal/drush/drush_test.go`
+- cmd tests in `cmd/drupal-watcher/main_test.go`
 
 ## Guidelines
-- Keep JS (no TypeScript) to avoid build step
-- All user-facing messages in **English**
-- Functions accept optional `root` parameter for testability (defaults to `process.cwd()`)
-- Use `import { detectDrupalRoot } from "../src/config.js"` style (with `.js` extension)
-- Caches are per-root via `_rootCache` Map; use `invalidateConfigCache(root)` to reset
-- All paths relative to project root
-- Use `parseFlags()` from `main.js` for CLI flag parsing in tests
-- Convention: `cmdHelp`, `cmdStart`, `cmdList` etc. for command functions
+- **All user-facing messages in English**
+- Functions accept optional `root` parameter for testability (defaults to `os.Getwd()`)
+- Caches are per-root via `map[string]*cacheEntry`; use `InvalidateConfigCache(root)` to reset
+- Use `Get*` prefix for interface methods to avoid naming conflict with struct fields
+- All paths relative to project root unless otherwise specified
+- Convention: `CmdStart`, `CmdList`, `CmdStatus` etc. for command functions
+- Config satisfies both `watcher.Config` and `drush.DrushConfig` interfaces via method set
+- PID/starttime files stored in project root (`cwd/`) by default, or in `root` if specified
+
+## Key types
+- `config.Config` — Main configuration struct with all watcher settings
+- `config.Manager` — Config cache and file operations
+- `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
+- `drush.DrushResult` — Result of a drush command execution
+- `watcher.Config` — Interface for watcher operations (satisfied by config.Config)
+- `watcher.Stats` — Runtime statistics (atomic counters for changes/clears)
+- `watcher.Handle` — Watcher handle with stop channel and references
+
+## Migration notes (from TS to Go)
+- Replaced `bun:test` with `go test`
+- Replaced `fs.watch`/`fs.watchFile` with `fsnotify`
+- Replaced `exec`/child_process with `os/exec`
+- PID files use `syscall.Kill(pid, 0)` for process check
+- Colors use ANSI escape codes with global toggle
+- Interface methods use `Get*` prefix to avoid Go field/method name conflicts

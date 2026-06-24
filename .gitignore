@@ -1,6 +1,23 @@
-node_modules/
-dist/
+# Dependencies (Go)
+vendor/
+
+# Build output
+bin/drupal-watcher-go
+/drupal-watcher
+
+# Runtime
 watcher.config.json
+drupal-watcher.config.json
+.drupal-watcher.pid
+.drupal-watcher.starttime
 *.log
+
+# Temp
 .test-tmp/
-*.tsbuildinfo
+dist/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
