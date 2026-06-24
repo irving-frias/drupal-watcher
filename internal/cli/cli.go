@@ -239,6 +239,76 @@ func CmdList(root string, mgr *config.Manager) {
 	utils.PrintSection("Configuration", items)
 }
 
+func CmdMonitor(root string, mgr *config.Manager) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigCh)
+
+	done := make(chan struct{}, 1)
+
+	// Print initial status, then refresh every 2s
+	printMonitorStatus(root, mgr)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			fmt.Print("\033[5A\033[J")
+			printMonitorStatus(root, mgr)
+		case <-sigCh:
+			fmt.Print("\033[5A\033[J")
+			printMonitorStatus(root, mgr)
+			fmt.Println("  Monitoring stopped.")
+			close(done)
+			return
+		case <-done:
+			return
+		}
+	}
+}
+
+func printMonitorStatus(root string, mgr *config.Manager) {
+	pidStatus, err := config.CheckPid(root)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+		return
+	}
+
+	if pidStatus == nil {
+		fmt.Printf("%s Drupal Watcher is not running.\n", utils.Yellow("●"))
+		fmt.Println()
+		fmt.Println("  Press Ctrl+C to stop monitoring.")
+		return
+	}
+
+	if pidStatus == "stale" {
+		fmt.Printf("%s Drupal Watcher is stopped (stale PID).\n", utils.Red("●"))
+		fmt.Println()
+		fmt.Println("  Press Ctrl+C to stop monitoring.")
+		return
+	}
+
+	pidStr := fmt.Sprintf("%v", pidStatus)
+	starttime, _ := config.GetStarttime(root)
+	pid := 0
+	fmt.Sscanf(pidStr, "%d", &pid)
+	running := IsPidRunning(pid)
+
+	if running && starttime > 0 {
+		uptime := time.Since(time.UnixMilli(starttime))
+		fmt.Printf("%s Drupal Watcher is running (PID %s, uptime %v).\n",
+			utils.Green("●"), utils.Cyan(pidStr), utils.Green(FormatDuration(uptime)))
+	} else if running {
+		fmt.Printf("%s Drupal Watcher is running (PID %s).\n",
+			utils.Green("●"), utils.Cyan(pidStr))
+	} else {
+		fmt.Printf("%s Drupal Watcher is stopped (stale PID).\n", utils.Red("●"))
+	}
+	fmt.Println()
+	fmt.Println("  Press Ctrl+C to stop monitoring.")
+}
+
 func CmdStatus(root string, mgr *config.Manager) {
 	pidStatus, err := config.CheckPid(root)
 	if err != nil {
@@ -404,6 +474,7 @@ Commands:
   stop        Stop the watcher (alias: reset)
   restart     Restart the watcher
   status      Show watcher status
+  monitor     Auto-refresh status every 2 seconds
   list        Show current configuration
   add         Add route and/or pattern
   remove      Remove route and/or pattern
@@ -483,6 +554,11 @@ func printInteractiveHelp() {
 	fmt.Println("    reload              Reload config from file")
 	fmt.Println("    stop/quit/exit      Stop the watcher")
 	fmt.Println("    help                Show this help")
+	fmt.Println()
+	fmt.Println("  Top-level commands (run without start):")
+	fmt.Println("    drupal-watcher status   Show watcher status")
+	fmt.Println("    drupal-watcher monitor  Auto-refresh watcher status")
+	fmt.Println("    drupal-watcher list     Show configuration")
 }
 
 func IsPidRunning(pid int) bool {
