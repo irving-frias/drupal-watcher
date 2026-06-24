@@ -115,3 +115,13 @@ if ($isWindows) {
 
 chmod($targetPath, 0755);
 echo "✔ Installed drupal-watcher ({$goos}/{$goarch}) to {$targetPath}\n";
+
+// Ensure vendor/bin/drupal-watcher symlink exists (from vendor context)
+$vendorBin = realpath($installDir . '/../../../bin');
+if ($vendorBin !== false && is_dir($vendorBin)) {
+	$launcher = $installDir . '/drupal-watcher';
+	$linkPath = $vendorBin . '/drupal-watcher';
+	if (!file_exists($linkPath)) {
+		@symlink($launcher, $linkPath);
+	}
+}

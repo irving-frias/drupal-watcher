@@ -3,9 +3,7 @@
   "description": "Drupal file watcher — monitors custom modules/themes and auto-runs drush cache clears on file changes. Development tool only, not required in production.",
   "type": "library",
   "license": "MIT",
-  "bin": [
-    "bin/drupal-watcher"
-  ],
+
   "require": {
     "php": ">=8.1"
   },

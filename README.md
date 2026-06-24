@@ -18,6 +18,8 @@ composer require --dev irving-frias/drupal-watcher
 vendor/bin/drupal-watcher help
 ```
 
+> If `vendor/bin/drupal-watcher` is unavailable after install, use the full path: `vendor/irving-frias/drupal-watcher/bin/drupal-watcher`
+
 On `composer install` the correct binary for your OS/architecture is downloaded from GitHub Releases and placed at `vendor/irving-frias/drupal-watcher/bin/drupal-watcher-go`. No compilation needed.
 
 > Install with `--dev` to exclude it from production deployments via `composer install --no-dev`.
