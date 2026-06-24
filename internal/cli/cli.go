@@ -191,6 +191,8 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 			case "monitor", "m":
 				printInteractiveStatus(h)
 				monitorLoop(h)
+			case "help":
+				printInteractiveHelp()
 			default:
 				fmt.Printf("  Unknown command: %s. Type %s.\n", parts[0], utils.Green("help"))
 			}
