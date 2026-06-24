@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/utils"
-	"golang.org/x/sys/unix"
 )
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -308,7 +308,11 @@ func CheckPid(root string) (interface{}, error) {
 	if err != nil {
 		return nil, nil
 	}
-	if err := unix.Kill(pid, unix.Signal(0)); err != nil {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return "stale", nil
+	}
+	if err := proc.Signal(os.Signal(syscall.Signal(0))); err != nil {
 		return "stale", nil
 	}
 	return pidStr, nil
