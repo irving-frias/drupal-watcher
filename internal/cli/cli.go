@@ -91,6 +91,10 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 		os.Exit(1)
 	}
 
+	// Show startup info
+	utils.PrintMemStats(utils.GetMemStats(h.WatchCount))
+	fmt.Printf("  Routes: %s\n", utils.Cyan(strings.Join(cfg.Routes, ", ")))
+	fmt.Printf("  Patterns: %s\n", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
 	fmt.Printf("%s Watcher started. PID %d. Type %s for commands.\n",
 		utils.Timestamp(), os.Getpid(), utils.Green("help"))
 
@@ -128,9 +132,7 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 			case "list", "config":
 				printInteractiveConfig(cfg)
 			case "stats":
-				uptime := time.Since(h.Stats.StartTime)
-				fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
-					h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
+				printInteractiveStatus(h)
 			case "add":
 				if len(parts) < 2 {
 					fmt.Println("  Usage: add <route> [pattern]")
@@ -186,8 +188,9 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 			case "stop", "quit", "exit":
 				fmt.Println("  Stopping watcher...")
 				stopped = true
-			case "help":
-				printInteractiveHelp()
+			case "monitor", "m":
+				printInteractiveStatus(h)
+				monitorLoop(h)
 			default:
 				fmt.Printf("  Unknown command: %s. Type %s.\n", parts[0], utils.Green("help"))
 			}
@@ -197,8 +200,16 @@ func CmdStart(root string, flags map[string]interface{}, mgr *config.Manager) {
 	watcher.Stop(h)
 
 	uptime := time.Since(h.Stats.StartTime)
-	fmt.Printf("\n%s Watcher stopped. %d changes, %d cache clears, uptime %v\n",
-		utils.P_INFO, h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
+	changes := h.Stats.Changes.Load()
+	clears := h.Stats.Clears.Load()
+
+	statusIcon := utils.P_SUCCESS
+	if changes > 0 && clears == 0 {
+		statusIcon = utils.P_WARN
+	}
+	fmt.Printf("\n%s Watcher stopped. %d changes, %d clears, uptime %v\n",
+		statusIcon, changes, clears, FormatDuration(uptime))
+	utils.PrintMemStats(utils.GetMemStats(h.WatchCount))
 }
 
 func CmdList(root string, mgr *config.Manager) {
@@ -256,6 +267,7 @@ func CmdStatus(root string, mgr *config.Manager) {
 		uptime := time.Since(time.UnixMilli(starttime))
 		fmt.Printf("%s Drupal Watcher is running (PID %s, uptime %v).\n",
 			utils.Green("●"), utils.Cyan(pidStr), utils.Green(FormatDuration(uptime)))
+		fmt.Printf("  Memory: %s\n", utils.Cyan("see 'stats' at runtime"))
 	} else if running {
 		fmt.Printf("%s Drupal Watcher is running (PID %s).\n",
 			utils.Green("●"), utils.Cyan(pidStr))
@@ -423,6 +435,35 @@ func printInteractiveStatus(h *watcher.Handle) {
 	fmt.Printf("  %s Watcher running. PID %d\n", utils.Green("●"), os.Getpid())
 	fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
 		h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
+	utils.PrintMemStats(utils.GetMemStats(h.WatchCount))
+}
+
+func monitorLoop(h *watcher.Handle) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	done := make(chan struct{})
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Scan() // wait for any line
+		close(done)
+	}()
+
+	fmt.Println("  Monitor mode (press Enter to stop)...")
+	for {
+		select {
+		case <-ticker.C:
+			fmt.Print("\033[4A\033[J") // move up 4 lines, clear to end
+			printInteractiveStatus(h)
+			fmt.Println("  Monitor mode (press Enter to stop)...")
+		case <-done:
+			fmt.Print("\033[4A\033[J")
+			printInteractiveStatus(h)
+			return
+		case <-h.StopCh:
+			return
+		}
+	}
 }
 
 func printInteractiveConfig(cfg config.Config) {
@@ -433,7 +474,8 @@ func printInteractiveConfig(cfg config.Config) {
 
 func printInteractiveHelp() {
 	fmt.Println("  Commands:")
-	fmt.Println("    status              Show watcher status and stats")
+	fmt.Println("    status              Show watcher status, stats and memory")
+	fmt.Println("    monitor (m)         Auto-refresh status every 2s")
 	fmt.Println("    list                Show current configuration")
 	fmt.Println("    stats               Show runtime statistics")
 	fmt.Println("    add <route>         Add a route to watch")

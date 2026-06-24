@@ -37,17 +37,18 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
 
 ## Commands
 
-| Command   | Description                            |
-|-----------|----------------------------------------|
-| start     | Start watching file changes            |
-| status    | Show running status and uptime         |
-| list      | Display current configuration          |
-| add       | Add route and/or pattern to watch      |
-| remove    | Remove route and/or pattern            |
-| restart   | Restart the watcher                    |
-| stop      | Stop the watcher and clear PID         |
-| reset     | Clear stale PID (if process crashed)   |
-| help      | Show usage information                 |
+| Command       | Description                            |
+|---------------|----------------------------------------|
+| start         | Start watching file changes            |
+| status        | Show running status and uptime         |
+| monitor (m)   | Auto-refresh status every 2 seconds    |
+| list          | Display current configuration          |
+| add           | Add route and/or pattern to watch      |
+| remove        | Remove route and/or pattern            |
+| restart       | Restart the watcher                    |
+| stop          | Stop the watcher and clear PID         |
+| reset         | Clear stale PID (if process crashed)   |
+| help          | Show usage information                 |
 
 ## Options
 
@@ -93,9 +94,11 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
 
 1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
 2. Uses `fsnotify` to watch all subdirectories under the configured routes
-3. When a file changes, debounces (default 800ms) and runs the corresponding drush command
-4. Drush output and post-clear commands are printed to the terminal
-5. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
+3. When files change, debounces (default 800ms) collecting all changes into a batch
+4. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
+5. If any change requires a full rebuild (`cr`), it overrides all other commands
+6. Drush output and post-clear commands are printed to the terminal
+7. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
 
 ## Architecture
 
@@ -145,6 +148,48 @@ drush twig:debug off  # restores production settings
 ```
 
 Available since Drush 12.1+. Handles `twig.config` settings automatically — no manual cache clears needed.
+
+## Interactive commands
+
+While the watcher is running, type commands at the prompt:
+
+| Command                | Description                            |
+|------------------------|----------------------------------------|
+| `status`               | Show stats, memory, and kernel watches |
+| `monitor` / `m`        | Auto-refresh status every 2 seconds    |
+| `list` / `config`      | Show current configuration             |
+| `stats`                | Show runtime statistics and memory     |
+| `add <route>`          | Add a route and restart watcher        |
+| `remove <route>`       | Remove a route and restart watcher     |
+| `reload`               | Reload config from file                |
+| `help`                 | Show available commands                |
+| `stop` / `quit` / `exit` | Stop the watcher                     |
+
+### Monitor mode
+
+`monitor` refreshes the status pane every 2 seconds:
+
+```
+[15:30:00] ● Watcher running. PID 12345
+  Changes: 142  Clears: 18  Uptime: 30m
+  Memory: 28.4 MB  |  Kernel watches: 47
+  Monitor mode (press Enter to stop)...
+```
+
+Press Enter to exit monitor mode.
+
+## Drush optimizations
+
+The watcher applies several optimizations to minimize overhead:
+
+| Optimization | Description |
+|---|---|
+| **Binary caching** | Resolved `drush` path cached after first lookup, avoids repeated `$PATH` scans |
+| **Batch cache clears** | Multiple `cc <type>` commands merged into a single `drush cc type1,type2,...` call |
+| **`cr` overrides** | If any change requires `drush cr`, all other commands are skipped |
+| **Quiet mode** | Drush runs with `--quiet --no-ansi` by default for minimal output overhead |
+
+On large debounce windows, rapid changes to different file types share a single PHP bootstrap instead of spawning separate processes.
 
 ### Pre-warming caches (Drush 13+)
 

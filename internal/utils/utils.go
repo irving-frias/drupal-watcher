@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -113,4 +114,29 @@ func PrintDrushHealthResult(h DrushHealth) {
 	if !h.Ok && h.Output != "" {
 		fmt.Printf("  %s\n", Dim(strings.TrimSpace(h.Output)))
 	}
+}
+
+type MemStats struct {
+	AllocMB    float64
+	WatchCount int
+}
+
+func GetMemStats(watchCount int) MemStats {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return MemStats{
+		AllocMB:    float64(m.Alloc) / 1024 / 1024,
+		WatchCount: watchCount,
+	}
+}
+
+func PrintMemStats(s MemStats) {
+	memColor := GREEN
+	if s.AllocMB >= 500 {
+		memColor = RED
+	} else if s.AllocMB >= 100 {
+		memColor = YELLOW
+	}
+	fmt.Printf("  Memory: %s  |  Kernel watches: %d\n",
+		c(memColor, fmt.Sprintf("%.1f MB", s.AllocMB)), s.WatchCount)
 }

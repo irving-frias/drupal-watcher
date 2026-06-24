@@ -138,11 +138,12 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 		drupalRoot = *d
 	}
 	return Config{
-		Routes:    []string{drupalRoot + "/modules/custom", drupalRoot + "/themes/custom"},
-		Patterns:  utils.DefaultPatterns,
-		Debounce:  800,
-		DrushCmd:  nil,
-		DrushCommand: "cr",
+		Routes:          []string{drupalRoot + "/modules/custom", drupalRoot + "/themes/custom"},
+		Patterns:        utils.DefaultPatterns,
+		Debounce:        800,
+		DrushCmd:        nil,
+		DrushCommand:    "cr",
+		DrushArgs:       []string{"--quiet", "--no-ansi"},
 		CommandsPerPattern: map[string]string{
 			".html.twig":       "cc render",
 			".twig":            "cc render",

@@ -9,9 +9,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+)
+
+var (
+	cachedCmd string
+	cmdMu     sync.RWMutex
 )
 
 type DrushResult struct {
@@ -32,8 +38,24 @@ func GetCmd(cfg DrushConfig) string {
 	if d := cfg.GetDrushCmd(); d != nil && *d != "" {
 		return *d
 	}
+
+	cmdMu.RLock()
+	if cachedCmd != "" {
+		cmdMu.RUnlock()
+		return cachedCmd
+	}
+	cmdMu.RUnlock()
+
+	cmdMu.Lock()
+	defer cmdMu.Unlock()
+
+	if cachedCmd != "" {
+		return cachedCmd
+	}
+
 	// Try to find drush in PATH first
 	if path, err := exec.LookPath("drush"); err == nil {
+		cachedCmd = path
 		return path
 	}
 	// Try vendor/bin/drush relative to Drupal root
@@ -41,11 +63,19 @@ func GetCmd(cfg DrushConfig) string {
 	if drupalRoot != nil && *drupalRoot != "" {
 		vendorDrush := filepath.Join(*drupalRoot, "..", "vendor", "bin", "drush")
 		if _, err := os.Stat(vendorDrush); err == nil {
+			cachedCmd = vendorDrush
 			return vendorDrush
 		}
 	}
 	// Fallback
+	cachedCmd = "drush"
 	return "drush"
+}
+
+func ResetCmdCache() {
+	cmdMu.Lock()
+	defer cmdMu.Unlock()
+	cachedCmd = ""
 }
 
 func GetSpawnArgs(cfg DrushConfig) (string, []string) {
@@ -101,6 +131,45 @@ func Run(drushBase string, args []string) DrushResult {
 		Stderr:   stderr.String(),
 		Duration: duration,
 	}
+}
+
+// RunCacheClears executes multiple cache clear commands in a single drush invocation.
+// It batches compatible "cc <type>" commands into one call (e.g. "cc render,plugin,css-js").
+// If any command is "cr", it runs "cr" once (covers everything).
+func RunCacheClears(cfg DrushConfig, commands []string) DrushResult {
+	if len(commands) == 0 {
+		return DrushResult{ExitCode: 0}
+	}
+
+	drushBase := GetCmd(cfg)
+	var hasCR bool
+	var ccTypes []string
+	for _, cmd := range commands {
+		switch {
+		case cmd == "cr" || cmd == "cache:rebuild":
+			hasCR = true
+		case strings.HasPrefix(cmd, "cc ") || strings.HasPrefix(cmd, "cache:clear "):
+			parts := strings.Fields(cmd)
+			if len(parts) >= 2 {
+				for _, t := range parts[1:] {
+					if t != "" {
+						ccTypes = append(ccTypes, t)
+					}
+				}
+			}
+		default:
+			// Unknown command, fall back to cr to be safe
+			hasCR = true
+		}
+	}
+
+	if hasCR {
+		return Run(drushBase, []string{"cr"})
+	}
+	if len(ccTypes) > 0 {
+		return Run(drushBase, []string{"cc", strings.Join(ccTypes, ",")})
+	}
+	return DrushResult{ExitCode: 0}
 }
 
 func RunPostClearCommands(commands []string) {
