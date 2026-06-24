@@ -69,7 +69,7 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
   "debounce": 800,
   "commandsPerPattern": {
     ".html.twig": "cc bin twig",
-    ".theme": "cc plugin",
+    ".theme": "cc theme-registry",
     ".module": "cc plugin",
     ".inc": "cc plugin",
     ".yml": "cc plugin",
@@ -114,7 +114,7 @@ Different file types run different drush commands:
 | Extension      | Drush command       |
 |----------------|---------------------|
 | `.html.twig`   | `cc bin twig`       |
-| `.theme`       | `cc plugin`         |
+| `.theme`       | `cc theme-registry` |
 | `.module`      | `cc plugin`         |
 | `.inc`         | `cc plugin`         |
 | `.yml`         | `cc plugin`         |
