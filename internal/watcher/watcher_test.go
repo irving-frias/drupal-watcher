@@ -55,6 +55,10 @@ func TestWatcherStartStop(t *testing.T) {
 		t.Fatal("expected non-nil handle")
 	}
 
+	if h.WatchCount <= 0 {
+		t.Errorf("expected positive WatchCount, got %d", h.WatchCount)
+	}
+
 	watcher.Stop(h)
 }
 

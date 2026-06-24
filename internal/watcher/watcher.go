@@ -37,17 +37,19 @@ type Stats struct {
 }
 
 type Handle struct {
-	Watcher *fsnotify.Watcher
-	StopCh  chan struct{}
-	LogFile *os.File
-	Stats   *Stats
-	Config  Config
+	Watcher    *fsnotify.Watcher
+	StopCh     chan struct{}
+	LogFile    *os.File
+	Stats      *Stats
+	Config     Config
+	WatchCount int
 }
 
 var (
-	mu       sync.Mutex
-	pending  atomic.Bool
-	lastFile string
+	mu           sync.Mutex
+	pending      atomic.Bool
+	changedFiles map[string]struct{}
+	lastFile     string // kept for the "last change" display message
 )
 
 // dirsSkippedByDefault are known high-cardinality directories unlikely to contain
@@ -105,6 +107,7 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 	}
 	debounce := time.Duration(debounceMs) * time.Millisecond
 
+	h.WatchCount = watchCount
 	fmt.Printf("%s Watching %d directories (%d kernel watches), debounce %v, %d patterns\n",
 		utils.Timestamp(), len(routes), watchCount, debounce, len(patterns))
 
@@ -140,6 +143,10 @@ func Start(cfg Config, logFile *os.File) (*Handle, error) {
 
 				mu.Lock()
 				lastFile = event.Name
+				if changedFiles == nil {
+					changedFiles = make(map[string]struct{})
+				}
+				changedFiles[event.Name] = struct{}{}
 				mu.Unlock()
 				pending.Store(true)
 
@@ -178,18 +185,38 @@ func Stop(h *Handle) {
 
 func processChange(h *Handle) {
 	mu.Lock()
-	file := lastFile
+	files := changedFiles
+	changedFiles = nil
+	dispFile := lastFile
 	mu.Unlock()
 
-	h.Stats.Changes.Add(1)
+	if len(files) == 0 {
+		return
+	}
 
-	fmt.Printf("%s Change detected: %s\n", utils.Timestamp(), utils.Dim(file))
+	changes := int64(len(files))
+	h.Stats.Changes.Add(changes)
 
 	commandsPerPattern := h.Config.GetCommandsPerPattern()
-	args := getCacheClearArgs(file, commandsPerPattern)
+	seen := make(map[string]struct{})
+	var cmds []string
+	for f := range files {
+		args := getCacheClearArgs(f, commandsPerPattern)
+		cmdStr := strings.Join(args, " ")
+		if _, ok := seen[cmdStr]; !ok {
+			seen[cmdStr] = struct{}{}
+			cmds = append(cmds, cmdStr)
+		}
+	}
 
-	drushBase := drush.GetCmd(h.Config)
-	result := drush.Run(drushBase, args)
+	msg := fmt.Sprintf("Change detected: %s", utils.Dim(dispFile))
+	if changes > 1 {
+		msg = fmt.Sprintf("%d changes detected (last: %s)", changes, utils.Dim(dispFile))
+	}
+	fmt.Printf("%s %s\n", utils.Timestamp(), msg)
+
+	// Batch all cache clears into a single drush invocation
+	result := drush.RunCacheClears(h.Config, cmds)
 	h.Stats.Clears.Add(1)
 
 	status := utils.P_SUCCESS
@@ -197,7 +224,7 @@ func processChange(h *Handle) {
 		status = utils.P_ERROR
 	}
 	fmt.Printf("%s %s drush %s (%v, exit %d)\n",
-		utils.Timestamp(), status, strings.Join(args, " "), result.Duration, result.ExitCode)
+		utils.Timestamp(), status, strings.Join(cmds, " + "), result.Duration, result.ExitCode)
 
 	if result.Stderr != "" {
 		fmt.Fprintf(os.Stderr, "  %s\n", utils.Dim(strings.TrimSpace(result.Stderr)))

@@ -91,3 +91,20 @@ func TestExcludedDirs(t *testing.T) {
 		t.Error("expected excluded dirs")
 	}
 }
+
+func TestGetMemStats(t *testing.T) {
+	s := utils.GetMemStats(42)
+	if s.AllocMB <= 0 {
+		t.Error("expected positive AllocMB")
+	}
+	if s.WatchCount != 42 {
+		t.Errorf("expected WatchCount 42, got %d", s.WatchCount)
+	}
+}
+
+func TestPrintMemStats(t *testing.T) {
+	// Should not panic
+	utils.PrintMemStats(utils.MemStats{AllocMB: 50, WatchCount: 10})
+	utils.PrintMemStats(utils.MemStats{AllocMB: 150, WatchCount: 10})
+	utils.PrintMemStats(utils.MemStats{AllocMB: 600, WatchCount: 10})
+}
