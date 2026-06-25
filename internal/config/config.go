@@ -26,6 +26,7 @@ type Config struct {
 	PostClearCommands   []string          `json:"postClearCommands"`
 	CommandsPerPattern  map[string]string `json:"commandsPerPattern"`
 	DrupalRoot          *string           `json:"drupalRoot"`
+	Notify              bool              `json:"-"`
 }
 
 func (c Config) GetDrushCmd() *string                 { return c.DrushCmd }
@@ -37,6 +38,7 @@ func (c Config) GetPatterns() []string                { return c.Patterns }
 func (c Config) GetExcludePatterns() []string         { return c.ExcludePatterns }
 func (c Config) GetDebounce() int                     { return c.Debounce }
 func (c Config) GetCommandsPerPattern() map[string]string { return c.CommandsPerPattern }
+func (c Config) GetNotify() bool                       { return c.Notify }
 func (c Config) GetPostClearCommands() []string       { return c.PostClearCommands }
 
 type Manager struct {

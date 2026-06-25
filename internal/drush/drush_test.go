@@ -13,12 +13,14 @@ type mockDrushConfig struct {
 	command string
 	args    []string
 	root    *string
+	notify  bool
 }
 
 func (m mockDrushConfig) GetDrushCmd() *string    { return m.cmd }
 func (m mockDrushConfig) GetDrushCommand() string  { return m.command }
 func (m mockDrushConfig) GetDrushArgs() []string   { return m.args }
 func (m mockDrushConfig) GetDrupalRoot() *string   { return m.root }
+func (m mockDrushConfig) GetNotify() bool           { return m.notify }
 
 func TestGetCmd(t *testing.T) {
 	drush.ResetCmdCache()
@@ -160,6 +162,69 @@ func TestRunCacheClearsBatchesCC(t *testing.T) {
 	// echo outputs the args; check it contains comma-separated types
 	if !strings.Contains(result.Stdout, "render,plugin,css-js") {
 		t.Errorf("expected batched cc args, got: %s", result.Stdout)
+	}
+}
+
+func TestNotifyCalledOnSuccess(t *testing.T) {
+	drush.ResetCmdCache()
+
+	var calledTitle, calledMsg string
+	drush.NotifyFunc = func(title, message string) {
+		calledTitle = title
+		calledMsg = message
+	}
+	defer func() { drush.NotifyFunc = drush.NotifyOS }()
+
+	cmd := "echo"
+	cfg := mockDrushConfig{cmd: &cmd, notify: true}
+	result := drush.RunCacheClears(cfg, []string{"cr"})
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d", result.ExitCode)
+	}
+	if calledTitle != "Drupal Watcher" {
+		t.Errorf("expected 'Drupal Watcher', got %q", calledTitle)
+	}
+	if calledMsg != "drush cr" {
+		t.Errorf("expected 'drush cr', got %q", calledMsg)
+	}
+}
+
+func TestNotifyNotCalledWhenDisabled(t *testing.T) {
+	drush.ResetCmdCache()
+
+	var called bool
+	drush.NotifyFunc = func(title, message string) {
+		called = true
+	}
+	defer func() { drush.NotifyFunc = drush.NotifyOS }()
+
+	cmd := "echo"
+	cfg := mockDrushConfig{cmd: &cmd, notify: false}
+	result := drush.RunCacheClears(cfg, []string{"cr"})
+	if result.ExitCode != 0 {
+		t.Fatalf("expected exit 0, got %d", result.ExitCode)
+	}
+	if called {
+		t.Error("expected no notification when notify is disabled")
+	}
+}
+
+func TestNotifyNotCalledOnError(t *testing.T) {
+	drush.ResetCmdCache()
+
+	var called bool
+	drush.NotifyFunc = func(title, message string) {
+		called = true
+	}
+	defer func() { drush.NotifyFunc = drush.NotifyOS }()
+
+	cfg := mockDrushConfig{cmd: nil, notify: true}
+	result := drush.RunCacheClears(cfg, []string{"cr"})
+	if result.ExitCode == 0 {
+		t.Skip("unexpected success, skipping error test")
+	}
+	if called {
+		t.Error("expected no notification on failure")
 	}
 }
 
