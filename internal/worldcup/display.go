@@ -191,3 +191,89 @@ func FprintSchedule(w io.Writer, client *Client, games []Game) {
 		fmt.Fprintf(w, "  \x1b[90mNo upcoming matches found\x1b[0m\n")
 	}
 }
+
+// ─── Openfootball display ───
+
+func PrintOFHistory(h *OFTeamHistory) {
+	FprintOFHistory(os.Stdout, h)
+}
+
+func FprintOFHistory(w io.Writer, h *OFTeamHistory) {
+	fmt.Fprintf(w, "\n  \x1b[1m%s\x1b[0m\n", h.TeamName)
+	fmt.Fprintf(w, "  \x1b[90m%d appearances  |  %d MP  %d W  %d D  %d L  |  GF %d  GA %d  |  Best: %s\x1b[0m\n\n",
+		h.Appearances, h.TotalMP, h.TotalW, h.TotalD, h.TotalL, h.TotalGF, h.TotalGA, h.BestResult)
+
+	for _, e := range h.Entries {
+		yearStr := e.Year
+		if e.Host {
+			yearStr = fmt.Sprintf("\x1b[33m%s\x1b[0m \x1b[90m⭐\x1b[0m", e.Year)
+		}
+		fmt.Fprintf(w, "  %s \x1b[1m%s\x1b[0m\n", yearStr, e.Tournament)
+		fmt.Fprintf(w, "  \x1b[90m    %d MP  %d W  %d D  %d L  GF %d  GA %d  — %s\x1b[0m\n",
+			e.MatchesPlayed, e.Wins, e.Draws, e.Losses, e.GoalsFor, e.GoalsAgainst, e.Result)
+	}
+}
+
+func PrintOFYear(t *OFTournament, year string) {
+	FprintOFYear(os.Stdout, t, year)
+}
+
+func FprintOFYear(w io.Writer, t *OFTournament, year string) {
+	fmt.Fprintf(w, "\n  \x1b[1m%s\x1b[0m\n\n", t.Name)
+
+	byRound := make(map[string][]OFMatch)
+	for _, m := range t.Matches {
+		r := m.Round
+		byRound[r] = append(byRound[r], m)
+	}
+
+	rounds := []string{"Group A", "Group B", "Group C", "Group D", "Group E", "Group F", "Group G", "Group H",
+		"Matchday 1", "Matchday 2", "Matchday 3",
+		"Round of 16", "Quarter-finals", "Semi-finals", "Match for third place", "Final"}
+	shown := make(map[string]bool)
+
+	for _, r := range rounds {
+		matches, ok := byRound[r]
+		if !ok {
+			continue
+		}
+		shown[r] = true
+		fmt.Fprintf(w, "  \x1b[1m%s\x1b[0m\n", r)
+		for _, m := range matches {
+			score := "- vs -"
+			if m.Score != nil && len(m.Score.FT) == 2 {
+				score = fmt.Sprintf("\x1b[97m%d\x1b[0m-\x1b[97m%d\x1b[0m", m.Score.FT[0], m.Score.FT[1])
+			}
+			dt := m.Date
+			if m.Time != "" {
+				dt = fmt.Sprintf("%s %s", m.Date, m.Time)
+			}
+			fmt.Fprintf(w, "    \x1b[90m%s\x1b[0m  %s  %s  %s\n",
+				dt, padName(m.Team1, 28), score, padName(m.Team2, 28))
+		}
+		fmt.Fprintln(w)
+	}
+
+	for r, matches := range byRound {
+		if shown[r] {
+			continue
+		}
+		fmt.Fprintf(w, "  \x1b[1m%s\x1b[0m\n", r)
+		for _, m := range matches {
+			score := "- vs -"
+			if m.Score != nil && len(m.Score.FT) == 2 {
+				score = fmt.Sprintf("\x1b[97m%d\x1b[0m-\x1b[97m%d\x1b[0m", m.Score.FT[0], m.Score.FT[1])
+			}
+			fmt.Fprintf(w, "    \x1b[90m%s\x1b[0m  %s  %s  %s\n",
+				m.Date, padName(m.Team1, 28), score, padName(m.Team2, 28))
+		}
+		fmt.Fprintln(w)
+	}
+}
+
+func padName(s string, n int) string {
+	if len(s) > n {
+		return s[:n-1] + "…"
+	}
+	return s + strings.Repeat(" ", n-len(s))
+}

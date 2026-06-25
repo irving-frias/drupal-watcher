@@ -131,10 +131,12 @@ func main() {
 
 	case "worldcup":
 		subcommand := ""
+		var subArgs []string
 		if len(extraArgs) > 0 {
 			subcommand = extraArgs[0]
+			subArgs = extraArgs[1:]
 		}
-		if err := cli.CmdWorldcup(subcommand, flags, extraArgs[1:], mgr); err != nil {
+		if err := cli.CmdWorldcup(subcommand, flags, subArgs, mgr); err != nil {
 			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
 			os.Exit(1)
 		}
