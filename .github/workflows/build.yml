@@ -135,4 +135,4 @@ jobs:
           git config user.email "github-actions@github.com"
           git add composer.json
           git commit -m "chore: bump version to ${{ steps.bump.outputs.next }}"
-          git push
+          git pull --rebase origin main && git push origin main
