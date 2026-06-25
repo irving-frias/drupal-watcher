@@ -18,11 +18,12 @@ var (
 			BorderForeground(lipgloss.Color("64")).
 			Padding(0, 1)
 
-	green = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
-	red   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	blue  = lipgloss.NewStyle().Foreground(lipgloss.Color("33"))
+	green  = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
+	red    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	blue   = lipgloss.NewStyle().Foreground(lipgloss.Color("33"))
 	yellow = lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
-	dim   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	cyan   = lipgloss.NewStyle().Foreground(lipgloss.Color("51"))
+	dim    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
 	infoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("33")).SetString(" ℹ ")
 	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).SetString(" ✔ ")

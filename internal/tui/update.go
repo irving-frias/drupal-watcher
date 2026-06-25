@@ -37,7 +37,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		eventsStyle = eventsStyle.Width(cw)
 		cmdStyle = cmdStyle.Width(cw)
 
-		vpHeight := msg.Height - 9 // status(4) + events border(2) + input(3)
+		vpHeight := msg.Height - 9
 		if vpHeight < 5 {
 			vpHeight = 5
 		}
@@ -50,17 +50,60 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "ctrl+d":
 			return m, tea.Quit
-		case "pgup", "pgdown", "up", "down":
+
+		case "pgup", "pgdown":
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
+
+		case "up":
+			if len(m.history) == 0 {
+				return m, nil
+			}
+			if m.historyIdx == -1 {
+				m.historyIdx = len(m.history) - 1
+			} else if m.historyIdx > 0 {
+				m.historyIdx--
+			} else {
+				return m, nil
+			}
+			m.input.SetValue(m.history[m.historyIdx])
+			m.input.CursorEnd()
+			return m, nil
+
+		case "down":
+			if m.historyIdx == -1 {
+				return m, nil
+			}
+			if m.historyIdx < len(m.history)-1 {
+				m.historyIdx++
+				m.input.SetValue(m.history[m.historyIdx])
+				m.input.CursorEnd()
+			} else {
+				m.historyIdx = -1
+				m.input.SetValue("")
+			}
+			return m, nil
+
+		case "end":
+			m.autoScroll = !m.autoScroll
+			if m.autoScroll {
+				m.viewport.GotoBottom()
+			}
+			return m, nil
+
 		case "enter":
 			cmd := strings.TrimSpace(m.input.Value())
 			m.input.SetValue("")
+			m.historyIdx = -1
 			if cmd == "" {
 				return m, nil
 			}
+			if len(m.history) == 0 || m.history[len(m.history)-1] != cmd {
+				m.history = append(m.history, cmd)
+			}
 			return m, m.executeCommand(cmd)
+
 		default:
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
@@ -108,6 +151,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			tag := ""
 			if evt.SiteName != "" {
 				tag = " [" + evt.SiteName + "]"
+				m.siteClears[evt.SiteName]++
 			}
 			line := fmt.Sprintf("drush %s%s (%v, exit %d)", evt.Commands, tag, evt.Duration.Round(time.Millisecond), evt.ExitCode)
 			if evt.Stderr != "" {
@@ -126,7 +170,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 		}
 		m.viewport.SetContent(m.renderEvents())
-		m.viewport.GotoBottom()
+		if m.autoScroll {
+			m.viewport.GotoBottom()
+		}
 		return m, listenForEvents(m.Watcher)
 
 	case errMsg:
@@ -159,9 +205,49 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 	case "help":
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),
-			Content: "Commands: status, stats, help, stop, quit",
-			Style:   infoStyle,
+			Content:   "Commands: status, stats, filter <site>, help, stop, quit",
+			Style:     infoStyle,
 		})
+	case "filter":
+		if len(parts) > 1 {
+			m.siteFilter = parts[1]
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   fmt.Sprintf("Filtering events by site: %s", cyan.Render(m.siteFilter)),
+				Style:     infoStyle,
+			})
+		} else {
+			m.siteFilter = ""
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   "Filter cleared",
+				Style:     infoStyle,
+			})
+		}
+	case "stats":
+		if len(m.siteClears) == 0 {
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   "No site-specific clears yet",
+				Style:     infoStyle,
+			})
+		} else {
+			var sb strings.Builder
+			sb.WriteString("Clears per site: ")
+			first := true
+			for name, count := range m.siteClears {
+				if !first {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(fmt.Sprintf("%s: %d", cyan.Render(name), count))
+				first = false
+			}
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   sb.String(),
+				Style:     infoStyle,
+			})
+		}
 	case "stop", "quit", "exit":
 		return tea.Quit
 	default:

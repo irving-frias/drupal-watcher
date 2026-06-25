@@ -25,8 +25,16 @@ type Model struct {
 	eventCap int
 	viewport viewport.Model
 	input    textinput.Model
-	ready bool
-	width int
+	ready    bool
+	width    int
+
+	history    []string
+	historyIdx int
+
+	autoScroll bool
+
+	siteFilter string
+	siteClears map[string]int64
 }
 
 type statusLine struct {
@@ -47,13 +55,16 @@ func NewModel(w *watcher.Handle) *Model {
 	ti.Width = 50
 
 	return &Model{
-		Watcher:  w,
-		events:   make([]eventLine, 0, eventBufferSize),
-		eventCap: eventBufferSize,
-		viewport: viewport.New(78, 10),
-		input:    ti,
-		ready:    true,
-		width:    80,
+		Watcher:    w,
+		events:     make([]eventLine, 0, eventBufferSize),
+		eventCap:   eventBufferSize,
+		viewport:   viewport.New(78, 10),
+		input:      ti,
+		ready:      true,
+		width:      80,
+		historyIdx: -1,
+		autoScroll: true,
+		siteClears: make(map[string]int64),
 	}
 }
 
