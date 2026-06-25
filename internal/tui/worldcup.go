@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -41,7 +42,7 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).Render(" ⚽ World Cup 2026 "))
 	b.WriteString("\n" + dim.Render("────────────────────"))
 
-	// ── Today's matches ──
+	// ── TODAY ──
 	todayCount := 0
 	for _, g := range games {
 		if !isSidebarToday(g.LocalDate) {
@@ -55,28 +56,22 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 		if todayCount == 0 {
 			b.WriteString("\n" + yellow.Render(" TODAY ") + dim.Render(now.Format("Jan 2")))
 		}
-		if todayCount >= 3 {
-			if todayCount == 3 {
-				b.WriteString("\n" + dim.Render("  ..."))
+		if todayCount < 3 {
+			hs, as := g.HomeScore, g.AwayScore
+			if hs == "null" || hs == "" {
+				hs = "-"
 			}
-			todayCount++
-			continue
+			if as == "null" || as == "" {
+				as = "-"
+			}
+			b.WriteString(fmt.Sprintf("\n  %s %s-%s %s%s",
+				dim.Render(truncateStr(home, 10)),
+				bold.Render(hs), bold.Render(as),
+				dim.Render(truncateStr(away, 10)),
+				statusSuffix(g.TimeElapsed)))
+		} else if todayCount == 3 {
+			b.WriteString("\n" + dim.Render("  ..."))
 		}
-
-		hs := g.HomeScore
-		as := g.AwayScore
-		if hs == "null" || hs == "" {
-			hs = "-"
-		}
-		if as == "null" || as == "" {
-			as = "-"
-		}
-
-		status := statusSuffix(g.TimeElapsed)
-		b.WriteString(fmt.Sprintf("\n  %s %s-%s %s%s",
-			dim.Render(truncateStr(home, 14)),
-			bold.Render(hs), bold.Render(as),
-			dim.Render(truncateStr(away, 14)), status))
 		todayCount++
 	}
 	if todayCount == 0 {
@@ -84,49 +79,27 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 		b.WriteString(dim.Render("\n  No matches today"))
 	}
 
-	// ── Group standings (top 2 groups) ──
-	if groups != nil {
-		for i, grp := range groups {
-			if i >= 2 {
-				break
+	// ── Group A ──
+	if groups != nil && len(groups) > 0 {
+		b.WriteString("\n\n  " + bold.Render("Group "+groups[0].Name))
+		for _, t := range groupTop2(groups[0].Teams) {
+			n := client.TeamName(t.TeamID)
+			if n == "" {
+				n = t.TeamID
 			}
-
-			top2 := make([]wc.GroupStanding, len(grp.Teams))
-			copy(top2, grp.Teams)
-			for i := 0; i < len(top2); i++ {
-				for j := i + 1; j < len(top2); j++ {
-					pi, _ := sidebarToInt(top2[i].Pts)
-					pj, _ := sidebarToInt(top2[j].Pts)
-					if pj > pi {
-						top2[i], top2[j] = top2[j], top2[i]
-					}
-				}
+			p := t.Pts
+			ps := dim
+			if p != "0" {
+				ps = bold
 			}
-
-			b.WriteString("\n" + dim.Render("────────────────────"))
-			b.WriteString("\n  " + bold.Render("Group "+grp.Name))
-			limit := min(2, len(top2))
-			for _, t := range top2[:limit] {
-				n := client.TeamName(t.TeamID)
-				if n == "" {
-					n = t.TeamID
-				}
-				ptsStyle := dim
-				if t.Pts != "0" {
-					ptsStyle = bold
-				}
-				b.WriteString(fmt.Sprintf("\n  %s %s",
-					dim.Render(truncateStr(n, 14)), ptsStyle.Render(t.Pts)))
-			}
+			b.WriteString(fmt.Sprintf("\n  %s %s", dim.Render(truncateStr(n, 10)), ps.Render(p)))
 		}
 	}
 
-	// ── Upcoming matches (real teams only) ──
-	b.WriteString("\n" + dim.Render("────────────────────"))
-	b.WriteString("\n" + yellow.Render(" NEXT"))
-	shownNext := 0
+	// ── NEXT ──
+	var upcoming []wc.Game
 	for _, g := range games {
-		if shownNext >= 3 {
+		if len(upcoming) >= 2 {
 			break
 		}
 		home := realName(g.HomeTeamNameEn, g.HomeTeamLabel)
@@ -134,22 +107,22 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 		if home == "" || away == "" {
 			continue
 		}
-		datePart := strings.TrimSpace(strings.SplitN(g.LocalDate, " ", 2)[0])
-		t, err := time.Parse("01/02/2006", datePart)
-		if err != nil || t.Before(now.Truncate(24*time.Hour)) {
+		if !isUpcoming(g, now) {
 			continue
 		}
-		if strings.ToLower(g.TimeElapsed) != "notstarted" {
-			continue
-		}
-		b.WriteString(fmt.Sprintf("\n  %s vs %s",
-			dim.Render(truncateStr(home, 11)), dim.Render(truncateStr(away, 11))))
-		shownNext++
+		upcoming = append(upcoming, g)
 	}
-	if shownNext == 0 {
-		b.WriteString(dim.Render("\n  —"))
+	if len(upcoming) > 0 {
+		b.WriteString("\n\n  " + yellow.Render("NEXT"))
+		for _, g := range upcoming {
+			home := realName(g.HomeTeamNameEn, g.HomeTeamLabel)
+			away := realName(g.AwayTeamNameEn, g.AwayTeamLabel)
+			b.WriteString(fmt.Sprintf("\n  %s vs %s",
+				dim.Render(truncateStr(home, 10)), dim.Render(truncateStr(away, 10))))
+		}
 	}
 
+	b.WriteString("\n" + dim.Render("────────────────────"))
 	b.WriteString(dim.Render("\n  :refresh — update"))
 }
 
@@ -181,6 +154,32 @@ func isSidebarToday(dateStr string) bool {
 		return false
 	}
 	return parts[0] == time.Now().Local().Format("01/02/2006")
+}
+
+func isUpcoming(g wc.Game, now time.Time) bool {
+	if strings.ToLower(g.TimeElapsed) != "notstarted" {
+		return false
+	}
+	datePart := strings.TrimSpace(strings.SplitN(g.LocalDate, " ", 2)[0])
+	t, err := time.Parse("01/02/2006", datePart)
+	if err != nil {
+		return false
+	}
+	return !t.Before(now.Truncate(24 * time.Hour))
+}
+
+func groupTop2(teams []wc.GroupStanding) []wc.GroupStanding {
+	top := make([]wc.GroupStanding, len(teams))
+	copy(top, teams)
+	sort.Slice(top, func(i, j int) bool {
+		pi, _ := sidebarToInt(top[i].Pts)
+		pj, _ := sidebarToInt(top[j].Pts)
+		return pj < pi
+	})
+	if len(top) > 2 {
+		top = top[:2]
+	}
+	return top
 }
 
 func sidebarToInt(s string) (int, error) {
