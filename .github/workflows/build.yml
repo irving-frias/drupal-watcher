@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -62,3 +65,47 @@ jobs:
           path: |
             drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.*
           compression-level: 0
+
+  release:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(jq -r '.extra["drupal-watcher-version"] // "1.0.0"' composer.json)
+          echo "tag=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag
+        id: check
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@v4
+        if: steps.check.outputs.exists == 'false'
+        with:
+          path: artifacts
+
+      - name: Collect assets
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          mkdir -p assets
+          find artifacts -type f | while read f; do
+            cp "$f" assets/
+          done
+
+      - name: Create Release
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: drupal-watcher ${{ steps.version.outputs.tag }}
+          files: assets/*
+          fail_on_unmatched_files: false
+          generate_release_notes: true
