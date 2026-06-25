@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [feature/go-migration, main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
