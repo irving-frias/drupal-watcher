@@ -48,14 +48,24 @@ func loadSitesDir(sitesDir string) (map[string]Site, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".site.yml") {
 			continue
 		}
-		name := strings.TrimSuffix(e.Name(), ".site.yml")
+		fileName := strings.TrimSuffix(e.Name(), ".site.yml")
 		path := filepath.Join(sitesDir, e.Name())
 		fileSites, err := loadSitesFile(path)
 		if err != nil {
 			return nil, err
 		}
-		if s, ok := fileSites[name]; ok {
-			sites[name] = s
+
+		// Prefer key matching filename; otherwise use filename as site name
+		// and take URI from the first entry that has one (group/environment format).
+		if s, ok := fileSites[fileName]; ok {
+			sites[fileName] = s
+		} else {
+			for _, s := range fileSites {
+				if s.URI != "" {
+					sites[fileName] = Site{Name: fileName, URI: s.URI}
+					break
+				}
+			}
 		}
 	}
 	if len(sites) == 0 {
@@ -89,7 +99,7 @@ func LoadSitesYml(drupalRoot, projectRoot string) (map[string]Site, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no site aliases found in %s/drush/sites.yml, %s/drush/sites.yml, or drush/sites/*.site.yml in those paths", drupalRoot, projectRoot)
+	return nil, fmt.Errorf("no site aliases found in %s, %s, or drush/sites/*.site.yml under those directories", filepath.Join(projectRoot, "drush", "sites.yml"), filepath.Join(drupalRoot, "drush", "sites.yml"))
 }
 
 func HasMultiSite(drupalRoot string) bool {
