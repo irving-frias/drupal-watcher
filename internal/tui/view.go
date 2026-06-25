@@ -100,9 +100,13 @@ func (m *Model) View() string {
 	events := m.viewport.View()
 	events = eventsStyle.Render(events)
 
-	if m.worldcupMode && m.worldcupSidebar != "" {
+	if m.worldcupSidebar != "" && m.width >= 100 {
+		sw := m.width / 3
+		if sw < 30 {
+			sw = 30
+		}
 		sidebar := lipgloss.NewStyle().
-			Width(m.width/3 - 2).
+			Width(sw - 2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("214")).
 			Padding(0, 1).

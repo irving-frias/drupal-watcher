@@ -127,6 +127,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Running:    true,
 		}
 		m.viewport.SetContent(m.renderEvents())
+
+		if m.worldcupSidebar == "" || time.Since(m.worldcupLastRefresh) > 60*time.Second {
+			m.refreshWorldcup()
+		}
 		return m, tickCmd()
 
 	case watcherEventMsg:
@@ -205,7 +209,7 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 	case "help":
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),
-			Content:   "Commands: status, stats, filter <site>, help, stop, quit",
+			Content:   "Commands: status, stats, filter <site>, :history <team>, help, stop, quit",
 			Style:     infoStyle,
 		})
 	case "filter":
@@ -248,15 +252,8 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 				Style:     infoStyle,
 			})
 		}
-	case "worldcup":
-		subview := "live"
-		if len(parts) > 1 {
-			subview = parts[1]
-		}
-		return m.handleWorldcup(subview)
-	case "back":
-		m.worldcupMode = false
-		m.worldcupSidebar = ""
+	case "worldcup", "refresh":
+		m.refreshWorldcup()
 	case "stop", "quit", "exit":
 		return tea.Quit
 	default:
