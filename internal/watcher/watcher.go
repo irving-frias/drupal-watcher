@@ -225,6 +225,59 @@ func Stop(h *Handle) {
 	h.wg.Wait()
 }
 
+// affectedSites returns the subset of resolved sites whose directories
+// contain the changed files. If any file is outside a site-specific path
+// (shared modules/themes), all sites are returned.
+func affectedSites(h *Handle, files map[string]struct{}) []SiteInfo {
+	sites := h.Config.GetResolvedSites()
+	if len(sites) == 0 {
+		return nil
+	}
+
+	// Build site path markers once: /sites/{name}/
+	type marker struct {
+		name string
+		path string
+	}
+	markers := make([]marker, len(sites))
+	for i, s := range sites {
+		markers[i] = marker{name: s.Name, path: string(filepath.Separator) + "sites" + string(filepath.Separator) + s.Name + string(filepath.Separator)}
+	}
+
+	sharedFile := false
+	siteSet := make(map[string]bool)
+
+	for f := range files {
+		found := false
+		for _, m := range markers {
+			if strings.Contains(f, m.path) {
+				siteSet[m.name] = true
+				found = true
+				break
+			}
+		}
+		if !found {
+			sharedFile = true
+		}
+	}
+
+	// Shared change or multiple sites → all sites
+	if sharedFile || len(siteSet) > 1 {
+		return sites
+	}
+
+	// Single site detected → return only that site
+	for name := range siteSet {
+		for _, s := range sites {
+			if s.Name == name {
+				return []SiteInfo{s}
+			}
+		}
+	}
+
+	return sites
+}
+
 func processChange(h *Handle) {
 	mu.Lock()
 	files := changedFiles
@@ -251,6 +304,9 @@ func processChange(h *Handle) {
 		}
 	}
 
+	// Determine which sites are affected by these file changes
+	targetSites := affectedSites(h, files)
+
 	isTUI := h.EventCh != nil
 
 	msg := fmt.Sprintf("Change detected: %s", utils.Dim(dispFile))
@@ -272,15 +328,15 @@ func processChange(h *Handle) {
 	}
 
 	cmdStr := strings.Join(cmds, " + ")
-	sites := h.Config.GetResolvedSites()
 
-	if len(sites) == 0 {
+	if len(targetSites) == 0 {
+		// Single-site mode (no resolved sites)
 		result := drush.RunCacheClears(h.Config, cmds)
 		h.Stats.Clears.Add(1)
 		emitDrushResult(h, result, cmdStr, int(changes), dispFile, "")
 	} else {
 		var wg sync.WaitGroup
-		for _, s := range sites {
+		for _, s := range targetSites {
 			wg.Add(1)
 			go func(site SiteInfo) {
 				defer wg.Done()
