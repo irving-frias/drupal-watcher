@@ -32,14 +32,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		m.height = msg.Height
-		vpHeight := msg.Height - 4 - 3 // status(2) + input(1) + borders & padding
-		if vpHeight < 3 {
-			vpHeight = 3
+		cw := msg.Width - 2
+		statusStyle = statusStyle.Width(cw)
+		eventsStyle = eventsStyle.Width(cw)
+		cmdStyle = cmdStyle.Width(cw)
+
+		vpHeight := msg.Height - 9 // status(4) + events border(2) + input(3)
+		if vpHeight < 5 {
+			vpHeight = 5
 		}
-		m.viewport.Width = msg.Width - 4
+		m.viewport.Width = cw - 4
 		m.viewport.Height = vpHeight
-		m.input.Width = msg.Width - 6
+		m.input.Width = cw - 6
 		return m, nil
 
 	case tea.KeyMsg:
