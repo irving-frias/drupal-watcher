@@ -102,6 +102,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				icon = errorStyle
 			}
 			line := fmt.Sprintf("drush %s (%v, exit %d)", evt.Commands, evt.Duration.Round(time.Millisecond), evt.ExitCode)
+			if evt.Stderr != "" {
+				line += "\n" + dim.Render(evt.Stderr)
+			}
 			m.pushEvent(eventLine{
 				Timestamp: ts,
 				Content:   line,

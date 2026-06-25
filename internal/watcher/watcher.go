@@ -53,6 +53,7 @@ type EventMsg struct {
 	Commands  string
 	ExitCode  int
 	Duration  time.Duration
+	Stderr    string
 	Error     error
 }
 
@@ -291,6 +292,7 @@ func processChange(h *Handle) {
 			Commands:  cmdStr,
 			ExitCode:  result.ExitCode,
 			Duration:  result.Duration,
+			Stderr:    strings.TrimSpace(result.Stderr),
 		}:
 		default:
 		}
