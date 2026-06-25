@@ -306,27 +306,23 @@ site2:
 drush/
 ├── drush.yml
 └── sites
-    ├── egade.site.yml
-    ├── exatec.site.yml
-    ├── generosidad.site.yml
-    ├── incmty.site.yml
-    ├── prepa.site.yml
-    ├── profesional.site.yml
-    └── sorteostec.site.yml
+    ├── site1.site.yml
+    ├── site2.site.yml
+    └── site3.site.yml
 ```
 
 Each `{name}.site.yml` file defines one site alias. For example:
 
 ```yaml
-# drush/sites/egade.site.yml
-egade:
-  uri: 'https://egade.local'
+# drush/sites/site1.site.yml
+site1:
+  uri: 'https://site1.local'
 ```
 
 ```yaml
-# drush/sites/prepa.site.yml
-prepa:
-  uri: 'https://prepa.local'
+# drush/sites/site2.site.yml
+site2:
+  uri: 'https://site2.local'
 ```
 
 The per-site directory format is discovered automatically by scanning `drush/sites/*.site.yml`. The two formats are mutually exclusive — if `drush/sites.yml` exists, the directory is ignored.
