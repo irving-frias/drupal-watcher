@@ -78,16 +78,6 @@ func main() {
 			os.Exit(1)
 		}
 
-	case "monitor", "m":
-		root := ""
-		if len(extraArgs) > 0 {
-			root = extraArgs[0]
-		}
-		if err := cli.CmdMonitor(root, mgr); err != nil {
-			pterm.Error.Printfln("%v", err)
-			os.Exit(1)
-		}
-
 	case "list", "config":
 		root := ""
 		if len(extraArgs) > 0 {

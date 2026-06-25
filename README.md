@@ -61,7 +61,6 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | `start`                    | Start watching (opens TUI by default)  |
 | `tui`                      | Terminal UI (experimental)             |
 | `status`                   | Show running status and uptime         |
-| `monitor` / `m`            | Auto-refresh status every 2 seconds    |
 | `list` / `config`          | Display current configuration          |
 | `add` <route> [pattern]    | Add route and/or pattern to watch      |
 | `remove` / `rm` <route>    | Remove route and/or pattern            |
@@ -144,7 +143,6 @@ When running with `--no-tui`, type commands at the prompt:
 | Command                | Description                            |
 |------------------------|----------------------------------------|
 | `status`               | Show stats, memory, and kernel watches |
-| `monitor` / `m`        | Auto-refresh status every 2 seconds    |
 | `list` / `config`      | Show current configuration             |
 | `stats`                | Show runtime statistics and memory     |
 | `add <route>`          | Add a route and restart watcher        |
@@ -152,19 +150,6 @@ When running with `--no-tui`, type commands at the prompt:
 | `reload`               | Reload config from file                |
 | `help`                 | Show available commands                |
 | `stop` / `quit` / `exit` | Stop the watcher                     |
-
-### Monitor mode
-
-`monitor` refreshes the status pane every 2 seconds:
-
-```
-[15:30:00] ● Watcher running. PID 12345
-  Changes: 142  Clears: 18  Uptime: 30m
-  Memory: 28.4 MB  |  Kernel watches: 47
-  Monitor mode (press Enter to stop)...
-```
-
-Press Enter to exit monitor mode.
 
 ## Configuration
 

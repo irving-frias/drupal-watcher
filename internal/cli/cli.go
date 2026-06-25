@@ -298,9 +298,6 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 				case "stop", "quit", "exit":
 					fmt.Println("  Stopping watcher...")
 					stopped = true
-				case "monitor", "m":
-					printInteractiveStatus(h)
-					monitorLoop(ctx, h)
 				case "help":
 					printInteractiveHelp()
 				default:
@@ -383,62 +380,6 @@ func CmdList(root string, mgr *config.Manager) error {
 	}
 	utils.PrintSection("Configuration", items)
 	return nil
-}
-
-func CmdMonitor(root string, mgr *config.Manager) error {
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
-	defer signal.Stop(sigCh)
-
-	area, err := pterm.DefaultArea.Start(monitorContent(root, mgr))
-	if err != nil {
-		return fmt.Errorf("failed to start monitor: %w", err)
-	}
-
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			area.Update(monitorContent(root, mgr))
-		case <-sigCh:
-			area.Stop()
-			fmt.Println("  Monitoring stopped.")
-			return nil
-		}
-	}
-}
-
-func monitorContent(root string, mgr *config.Manager) string {
-	pidStatus, err := config.CheckPid(root)
-	if err != nil {
-		return pterm.Error.Sprintf("%v", err)
-	}
-
-	if pidStatus == nil {
-		return fmt.Sprintf("%s Drupal Watcher is not running.\n\n  Press Ctrl+C to stop monitoring.", utils.Yellow("●"))
-	}
-
-	if pidStatus == "stale" {
-		return fmt.Sprintf("%s Drupal Watcher is stopped (stale PID).\n\n  Press Ctrl+C to stop monitoring.", utils.Red("●"))
-	}
-
-	pidStr := fmt.Sprintf("%v", pidStatus)
-	starttime, _ := config.GetStarttime(root)
-	pid := 0
-	fmt.Sscanf(pidStr, "%d", &pid)
-	running := IsPidRunning(pid)
-
-	if running && starttime > 0 {
-		uptime := time.Since(time.UnixMilli(starttime))
-		text := fmt.Sprintf("Drupal Watcher is running (PID %s, uptime %s).", utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
-		return fmt.Sprintf("%s %s\n\n  Press Ctrl+C to stop monitoring.", utils.Green("●"), text)
-	} else if running {
-		text := fmt.Sprintf("Drupal Watcher is running (PID %s).", utils.Cyan(pidStr))
-		return fmt.Sprintf("%s %s\n\n  Press Ctrl+C to stop monitoring.", utils.Green("●"), text)
-	}
-	return fmt.Sprintf("%s Drupal Watcher is stopped (stale PID).\n\n  Press Ctrl+C to stop monitoring.", utils.Red("●"))
 }
 
 func CmdStatus(root string, mgr *config.Manager) error {
@@ -633,7 +574,6 @@ Commands:
   stop        Stop the watcher (alias: reset)
   restart     Restart the watcher
   status      Show watcher status
-  monitor     Auto-refresh status every 2 seconds
   list        Show current configuration
   add         Add route and/or pattern
   remove      Remove route and/or pattern
@@ -682,47 +622,6 @@ func printInteractiveStatus(h *watcher.Handle) {
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 }
 
-func monitorLoop(ctx context.Context, h *watcher.Handle) {
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		scanner := bufio.NewScanner(os.Stdin)
-		line := make(chan struct{}, 1)
-		go func() {
-			scanner.Scan()
-			close(line)
-		}()
-		select {
-		case <-line:
-		case <-ctx.Done():
-		}
-	}()
-
-	fmt.Println("  Monitor mode (press Enter to stop)...")
-	for {
-		select {
-		case <-ticker.C:
-			fmt.Print("\033[4A\033[J") // move up 4 lines, clear to end
-			printInteractiveStatus(h)
-			fmt.Println("  Monitor mode (press Enter to stop)...")
-		case <-done:
-			fmt.Print("\033[4A\033[J")
-			printInteractiveStatus(h)
-			return
-		case <-h.StopCh:
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
 func printInteractiveConfig(cfg config.Config) {
 	fmt.Printf("  Routes: %s\n", utils.Cyan(strings.Join(cfg.Routes, ", ")))
 	fmt.Printf("  Patterns: %s\n", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
@@ -732,7 +631,6 @@ func printInteractiveConfig(cfg config.Config) {
 func printInteractiveHelp() {
 	fmt.Println("  Commands:")
 	fmt.Println("    status              Show watcher status, stats and memory")
-	fmt.Println("    monitor (m)         Auto-refresh status every 2s")
 	fmt.Println("    list                Show current configuration")
 	fmt.Println("    stats               Show runtime statistics")
 	fmt.Println("    add <route>         Add a route to watch")
@@ -743,7 +641,6 @@ func printInteractiveHelp() {
 	fmt.Println()
 	fmt.Println("  Top-level commands (run without start):")
 	fmt.Println("    drupal-watcher status   Show watcher status")
-	fmt.Println("    drupal-watcher monitor  Auto-refresh watcher status")
 	fmt.Println("    drupal-watcher list     Show configuration")
 }
 
