@@ -50,6 +50,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "ctrl+d":
 			return m, tea.Quit
+		case "pgup", "pgdown", "up", "down":
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		case "enter":
 			cmd := strings.TrimSpace(m.input.Value())
 			m.input.SetValue("")
