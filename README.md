@@ -81,6 +81,9 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | `--log-file <path>`     | Write logs to file                            |
 | `--config <path>`       | Custom config file path                       |
 | `--commands-per-pattern <json>` | Override per-pattern commands        |
+| `--site <names>`        | Only watch specified sites (comma-separated)  |
+| `--exclude-site <names>` | Watch all sites except specified              |
+| `--uri <uri>`           | Single-site mode with explicit URI            |
 | `--help` / `-h`         | Show help                                     |
 | `--version` / `-V`      | Show version and Go runtime                   |
 
@@ -203,6 +206,7 @@ Press Enter to exit monitor mode.
 | `commandsPerPattern`  | Maps file extensions to specific drush commands              |
 | `postClearCommands`   | Shell commands to run after each cache clear                 |
 | `excludePatterns`     | Path substrings to exclude from watching                     |
+| `Sites`               | Site names to watch in multi-site setups (resolved via `drush/sites.yml`) |
 
 **commandsPerPattern** maps file extensions to drush commands. The most specific match wins (e.g., `.info.yml` matches before `.yml`). Falls back to `cr` if no pattern matches.
 
@@ -273,6 +277,60 @@ This is optional — add it to `postClearCommands` if you want automatic warming
 ```
 
 > **Note:** Warming can be slow on large sites. Not recommended during active development.
+
+## Multi-site
+
+Drupal Watcher supports [multi-site](https://www.drupal.org/docs/developing/multisite-drupal) setups with a single watcher process. When multiple sites are detected under `sites/`, drush runs in parallel goroutines for each site on every file change.
+
+### Auto-detection
+
+The watcher checks for directories under `sites/` beyond `default/` that contain `settings.php`. If only `sites/default/` exists, single-site mode is used (no changes to existing workflows).
+
+### `drush/sites.yml` (required for multi-site)
+
+When multiple sites are detected, you **must** create a `drush/sites.yml` file. This file tells the watcher which site aliases and URIs to use:
+
+```yaml
+# docroot/drush/sites.yml
+site1:
+  uri: 'https://site1.local'
+site2:
+  uri: 'https://site2.local'
+```
+
+The watcher does not guess URIs from directory names — a site alias can differ from its directory name. See [Drush site aliases docs](https://www.drush.org/latest/using-drush/site-aliases/) for details.
+
+If multi-site is detected and `drush/sites.yml` is missing, the watcher exits with an error and instructions to create the file.
+
+### Filtering sites
+
+| Flag | Example | Description |
+|---|---|---|
+| `--site` | `--site=site1,site2` | Whitelist — only watch these sites |
+| `--exclude-site` | `--exclude-site=site3` | Blacklist — watch all except these |
+| `--uri` | `--uri=https://site1.local` | Override single-site mode with a specific URI (skips detection) |
+
+### Config persistence
+
+The `Sites` field in `watcher.config.json` persists the site list from a previous run:
+
+```json
+{
+  "routes": ["docroot/modules/custom"],
+  "Sites": ["site1", "site2"]
+}
+```
+
+When `Sites` is present in the config file, it's auto-resolved against `drush/sites.yml` on startup. This is useful when you always work with the same subset of sites.
+
+### TUI display
+
+Events in the TUI are tagged with the site name:
+
+```
+10:00:01  ✔  drush cc plugin [site1] (312ms, exit 0)
+10:00:01  ✔  drush cc plugin [site2] (289ms, exit 0)
+```
 
 ## PID management
 
