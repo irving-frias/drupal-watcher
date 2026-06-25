@@ -229,13 +229,22 @@ func (m *Model) completeInput() {
 	input := strings.TrimSpace(m.input.Value())
 	parts := strings.Fields(input)
 
-	if input == "" {
-		if m.completions == nil {
-			m.completions = commands
-			m.completionIdx = 0
+	if m.completions != nil {
+		m.completionIdx = (m.completionIdx + 1) % len(m.completions)
+		newVal := m.completions[m.completionIdx]
+		if len(parts) >= 2 && parts[0] == "filter" {
+			newVal = "filter " + newVal
 		} else {
-			m.completionIdx = (m.completionIdx + 1) % len(m.completions)
+			newVal += " "
 		}
+		m.input.SetValue(newVal)
+		m.input.CursorEnd()
+		return
+	}
+
+	if input == "" {
+		m.completions = commands
+		m.completionIdx = 0
 		m.input.SetValue(m.completions[m.completionIdx] + " ")
 		m.input.CursorEnd()
 		return
@@ -250,19 +259,15 @@ func (m *Model) completeInput() {
 			}
 		}
 		if len(matches) > 0 {
-			if m.completions == nil || m.completionIdx >= len(m.completions) {
-				m.completions = matches
-				m.completionIdx = 0
-			} else {
-				m.completionIdx = (m.completionIdx + 1) % len(m.completions)
-			}
+			m.completions = matches
+			m.completionIdx = 0
 			m.input.SetValue(m.completions[m.completionIdx] + " ")
 			m.input.CursorEnd()
 		}
 		return
 	}
 
-	if parts[0] == "filter" && len(parts) == 2 && !strings.HasSuffix(input, " ") {
+	if len(parts) >= 2 && parts[0] == "filter" && !strings.HasSuffix(input, " ") {
 		prefix := parts[1]
 		var matches []string
 		for name := range m.siteClears {
@@ -271,12 +276,8 @@ func (m *Model) completeInput() {
 			}
 		}
 		if len(matches) > 0 {
-			if m.completions == nil || m.completionIdx >= len(m.completions) {
-				m.completions = matches
-				m.completionIdx = 0
-			} else {
-				m.completionIdx = (m.completionIdx + 1) % len(m.completions)
-			}
+			m.completions = matches
+			m.completionIdx = 0
 			m.input.SetValue("filter " + m.completions[m.completionIdx])
 			m.input.CursorEnd()
 		}
