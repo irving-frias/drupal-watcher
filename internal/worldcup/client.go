@@ -87,11 +87,11 @@ func (c *Client) get(path string, dst interface{}) error {
 }
 
 func (c *Client) FetchGames() ([]Game, error) {
-	var games []Game
-	if err := c.get("/get/games", &games); err != nil {
+	var resp GamesResponse
+	if err := c.get("/get/games", &resp); err != nil {
 		return nil, err
 	}
-	return games, nil
+	return resp.Games, nil
 }
 
 func (c *Client) FetchGroups() ([]Group, error) {

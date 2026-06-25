@@ -58,6 +58,10 @@ type TeamsResponse struct {
 	Teams []Team `json:"teams"`
 }
 
+type GamesResponse struct {
+	Games []Game `json:"games"`
+}
+
 // ─── Openfootball (historical) types ───
 
 type OFTournament struct {
