@@ -346,6 +346,7 @@ func processChange(h *Handle) {
 					URI:         site.URI,
 				}
 				result := drush.RunCacheClears(siteCfg, cmds)
+				h.Stats.Clears.Add(1)
 				emitDrushResult(h, result, cmdStr, int(changes), dispFile, site.Name)
 			}(s)
 		}
