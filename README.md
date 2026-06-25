@@ -286,11 +286,11 @@ Drupal Watcher supports [multi-site](https://www.drupal.org/docs/developing/mult
 
 The watcher checks for directories under `sites/` beyond `default/` that contain `settings.php`. If only `sites/default/` exists, single-site mode is used (no changes to existing workflows).
 
-### `drush/sites.yml` (required for multi-site)
+### Site aliases (required for multi-site)
 
-When multiple sites are detected, you **must** configure site aliases. The watcher supports both formats Drush accepts:
+When multiple sites are detected, you **must** configure site aliases so the watcher knows each site's URI. The watcher supports both formats Drush accepts:
 
-### Single file: `drush/sites.yml`
+#### Combined file: `drush/sites.yml`
 
 ```yaml
 # docroot/drush/sites.yml
@@ -300,23 +300,38 @@ site2:
   uri: 'https://site2.local'
 ```
 
-### Per-site files: `drush/sites/{name}.site.yml`
+#### Per-site files: `drush/sites/{name}.site.yml`
+
+```
+drush/
+├── drush.yml
+└── sites
+    ├── egade.site.yml
+    ├── exatec.site.yml
+    ├── generosidad.site.yml
+    ├── incmty.site.yml
+    ├── prepa.site.yml
+    ├── profesional.site.yml
+    └── sorteostec.site.yml
+```
+
+Each `{name}.site.yml` file defines one site alias. For example:
 
 ```yaml
-# docroot/drush/sites/egade.site.yml
+# drush/sites/egade.site.yml
 egade:
   uri: 'https://egade.local'
 ```
 
 ```yaml
-# docroot/drush/sites/prepa.site.yml
+# drush/sites/prepa.site.yml
 prepa:
   uri: 'https://prepa.local'
 ```
 
-The per-site directory format (`drush/sites/*.site.yml`) is discovered automatically. The two formats are mutually exclusive — if `drush/sites.yml` exists, the directory is ignored.
+The per-site directory format is discovered automatically by scanning `drush/sites/*.site.yml`. The two formats are mutually exclusive — if `drush/sites.yml` exists, the directory is ignored.
 
-The watcher does not guess URIs from directory names — a site alias can differ from its directory name. See [Drush site aliases docs](https://www.drush.org/latest/using-drush/site-aliases/) for details.
+The watcher does **not** guess URIs from directory names — a site alias can differ from its directory name. See [Drush site aliases docs](https://www.drush.org/latest/using-drush/site-aliases/) for details.
 
 If multi-site is detected and neither `drush/sites.yml` nor `drush/sites/*.site.yml` exists, the watcher exits with an error and instructions.
 
