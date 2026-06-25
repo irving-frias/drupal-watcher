@@ -9,29 +9,71 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - name: Test
+        run: go test -count=1 ./...
+      - name: Vet
+        run: go vet ./...
 
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
 
-      - name: Test
-        run: go test -count=1 ./...
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.exe" ./cmd/drupal-watcher
+          else
+            go build -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/drupal-watcher
+          fi
 
-      - name: Vet
-        run: go vet ./...
+      - name: Package (unix)
+        if: matrix.goos != 'windows'
+        run: |
+          gzip -c "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}" > "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.gz"
 
-      - name: Build (linux/amd64)
-        run: go build -o drupal-watcher-linux-amd64 ./cmd/drupal-watcher
+      - name: Package (windows)
+        if: matrix.goos == 'windows'
+        run: |
+          zip "drupal-watcher-windows-${{ matrix.goarch }}.zip" "drupal-watcher-windows-${{ matrix.goarch }}.exe"
+
+      - name: Stage artifact
+        run: |
+          mkdir -p /tmp/artifact
+          cp drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.* /tmp/artifact/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: drupal-watcher-linux-amd64
-          path: drupal-watcher-linux-amd64
+          name: drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: /tmp/artifact/*
           compression-level: 0
+
+  release:
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Get version
         id: version
@@ -39,15 +81,22 @@ jobs:
           BASE=$(jq -r '.extra["drupal-watcher-version"] // "v1.0.0"' composer.json)
           echo "tag=${BASE}.${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
 
-      - name: Compress for release
-        run: gzip -c drupal-watcher-linux-amd64 > drupal-watcher-linux-amd64.gz
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect assets
+        run: |
+          mkdir -p assets
+          find artifacts -type f | while read f; do
+            cp "$f" assets/
+          done
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: drupal-watcher ${{ steps.version.outputs.tag }}
-          files: |
-            drupal-watcher-linux-amd64.gz
-          fail_on_unmatched_files: true
+          files: assets/*
+          fail_on_unmatched_files: false
           generate_release_notes: true
