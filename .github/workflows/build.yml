@@ -68,15 +68,19 @@ jobs:
 
   release:
     needs: [test, build]
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Read version
         id: version
         run: |
           VERSION=$(jq -r '.extra["drupal-watcher-version"] // "1.0.0"' composer.json)
           echo "tag=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Check tag
         id: check
@@ -109,3 +113,26 @@ jobs:
           files: assets/*
           fail_on_unmatched_files: false
           generate_release_notes: true
+
+      - name: Bump patch version
+        if: steps.check.outputs.exists == 'false'
+        id: bump
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          IFS='.' read -r major minor patch <<< "$VERSION"
+          next="${major}.${minor}.$((patch + 1))"
+          echo "next=${next}" >> "$GITHUB_OUTPUT"
+
+      - name: Update composer.json
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          jq ".extra[\"drupal-watcher-version\"] = \"${{ steps.bump.outputs.next }}\"" composer.json > composer.tmp && mv composer.tmp composer.json
+
+      - name: Commit bump
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add composer.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.next }}"
+          git push
