@@ -3,7 +3,6 @@ package tui
 import (
 	"time"
 
-	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,10 +25,8 @@ type Model struct {
 	eventCap int
 	viewport viewport.Model
 	input    textinput.Model
-	help     help.Model
-	ready    bool
-	width    int
-	height   int
+	ready bool
+	width int
 }
 
 type statusLine struct {
@@ -49,17 +46,14 @@ func NewModel(w *watcher.Handle) *Model {
 	ti.CharLimit = 256
 	ti.Width = 50
 
-	vp := viewport.New(78, 20)
-	vp.YPosition = 4
-
 	return &Model{
 		Watcher:  w,
 		events:   make([]eventLine, 0, eventBufferSize),
 		eventCap: eventBufferSize,
-		viewport: vp,
+		viewport: viewport.New(78, 10),
 		input:    ti,
-		help:     help.New(),
 		ready:    true,
+		width:    80,
 	}
 }
 

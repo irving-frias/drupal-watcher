@@ -3,27 +3,20 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 var (
-	appStyle = lipgloss.NewStyle().
-			Padding(0, 1)
-
 	statusStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
-			Padding(0, 1).
-			Width(80)
+			Padding(0, 1)
 
 	eventsStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("33")).
-			Padding(0, 1).
-			Width(80).
-			Height(20)
+			Padding(0, 1)
 
 	cmdStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("64")).
-			Padding(0, 1).
-			Width(80)
+			Padding(0, 1)
 
 	green = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	red   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))

@@ -33,8 +33,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		vpHeight := msg.Height - 4 - 3 // status(2) + input(1) + borders & padding
+		if vpHeight < 3 {
+			vpHeight = 3
+		}
 		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - 8
+		m.viewport.Height = vpHeight
+		m.input.Width = msg.Width - 6
 		return m, nil
 
 	case tea.KeyMsg:
