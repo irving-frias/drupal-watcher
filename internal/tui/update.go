@@ -248,6 +248,15 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 				Style:     infoStyle,
 			})
 		}
+	case "worldcup":
+		subview := "live"
+		if len(parts) > 1 {
+			subview = parts[1]
+		}
+		return m.handleWorldcup(subview)
+	case "back":
+		m.worldcupMode = false
+		m.worldcupContent = ""
 	case "stop", "quit", "exit":
 		return tea.Quit
 	default:

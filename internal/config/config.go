@@ -16,6 +16,11 @@ import (
 
 func nowMs() int64 { return time.Now().UnixMilli() }
 
+type WorldcupConfig struct {
+	Enabled         bool `json:"enabled"`
+	RefreshInterval int  `json:"refreshInterval"`
+}
+
 type Config struct {
 	Routes              []string          `json:"routes"`
 	Patterns            []string          `json:"patterns"`
@@ -29,6 +34,7 @@ type Config struct {
 	DrupalRoot          *string           `json:"drupalRoot"`
 	Notify              bool              `json:"-"`
 	Sites               []string          `json:"sites,omitempty"`
+	Worldcup            *WorldcupConfig   `json:"worldcup,omitempty"`
 	resolvedSites       []watcher.SiteInfo
 }
 
@@ -274,6 +280,13 @@ func (m *Manager) ValidateConfig(cfg Config, root string) Config {
 	}
 	// Auto-migrate known outdated commands
 	cfg.CommandsPerPattern = migrateCommands(cfg.CommandsPerPattern)
+	// Worldcup defaults
+	if cfg.Worldcup == nil {
+		cfg.Worldcup = &WorldcupConfig{
+			Enabled:         true,
+			RefreshInterval: 60,
+		}
+	}
 	return cfg
 }
 

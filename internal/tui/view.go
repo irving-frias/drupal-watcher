@@ -96,7 +96,13 @@ func (m *Model) View() string {
 	}
 
 	status := statusStyle.Render(m.renderStatus())
-	events := m.viewport.View()
+
+	var events string
+	if m.worldcupMode && m.worldcupContent != "" {
+		events = dim.Render("World Cup 2026 — ") + yellow.Render(m.worldcupView) + "\n" + m.worldcupContent
+	} else {
+		events = m.viewport.View()
+	}
 	events = eventsStyle.Render(events)
 	input := cmdStyle.Render(m.renderInput())
 
