@@ -56,7 +56,7 @@ type statusLine struct {
 
 func NewModel(w *watcher.Handle) *Model {
 	ti := textinput.New()
-	ti.Placeholder = "Type a command..."
+	ti.Placeholder = "type help to see commands"
 	ti.Focus()
 	ti.CharLimit = 256
 	ti.Width = 50
