@@ -9,7 +9,7 @@ File watcher for Drupal development. Monitors custom modules and themes and auto
 
 > Go is **not required**. The binary is auto-downloaded during `composer install`.
 
-> **Development tool only.** This package is meant for local development and should not be required in production environments. Install it with `composer require --dev irving-frias/drupal-watcher`.
+> **Development tool only.** Install with `--dev` to exclude from production deployments via `composer install --no-dev`.
 
 ## Installation
 
@@ -22,8 +22,6 @@ On first run, the shell launcher downloads the correct binary for your OS/archit
 
 > If `vendor/bin/drupal-watcher` doesn't exist (e.g. on Windows), use the full path: `vendor/irving-frias/drupal-watcher/bin/drupal-watcher`
 
-> Install with `--dev` to exclude it from production deployments via `composer install --no-dev`.
-
 ### Manual download
 
 Download the binary for your platform from [GitHub Releases](https://github.com/irving-frias/drupal-watcher/releases), make it executable, and run it from your Drupal project root.
@@ -35,31 +33,130 @@ cd /path/to/drupal/project
 vendor/bin/drupal-watcher start
 ```
 
-A `watcher.config.json` is auto-created with sensible defaults. Edit it to customize routes, patterns, and cache clear commands.
+On first run, a `watcher.config.json` is auto-created with defaults. Edit it to customize routes, patterns, and cache clear commands.
+
+The TUI opens automatically. Events appear in real-time, and you can type commands at the prompt:
+
+```
+  ● drupal-watcher  PID: 12345  Uptime: 5m
+  Memory: 2.1 MB  |  Kernel watches: 630  |  Changes: 14  |  Clears: 3
+
+  ┌──────────────────────────────────────────────────────────────┐
+  │ 10:00:01  ℹ  Waiting for file changes...                     │
+  │ 10:02:15  ℹ  Change detected: docroot/modules/custom/foo.module │
+  │ 10:02:16  ✔  drush cc plugin (312ms, exit 0)                │
+  └──────────────────────────────────────────────────────────────┘
+
+  ┌──────────────────────────────────────────────────────────────┐
+  > help                                                         │
+  └──────────────────────────────────────────────────────────────┘
+```
+
+Use `--no-tui` to run the classic interactive CLI instead.
 
 ## Commands
 
-| Command            | Description                            |
-|--------------------|----------------------------------------|
-| start              | Start watching file changes            |
-| status             | Show running status and uptime         |
-| monitor (m)        | Auto-refresh status every 2 seconds    |
-| list / config      | Display current configuration          |
-| add           | Add route and/or pattern to watch      |
-| remove        | Remove route and/or pattern            |
-| restart       | Restart the watcher                    |
-| stop          | Stop the watcher and clear PID         |
-| reset         | Clear stale PID (if process crashed)   |
-| help          | Show usage information                 |
+| Command                    | Description                            |
+|----------------------------|----------------------------------------|
+| `start`                    | Start watching (opens TUI by default)  |
+| `tui`                      | Terminal UI (experimental)             |
+| `status`                   | Show running status and uptime         |
+| `monitor` / `m`            | Auto-refresh status every 2 seconds    |
+| `list` / `config`          | Display current configuration          |
+| `add` <route> [pattern]    | Add route and/or pattern to watch      |
+| `remove` / `rm` <route>    | Remove route and/or pattern            |
+| `restart`                  | Restart the watcher                    |
+| `stop` / `reset`           | Stop the watcher and clear PID         |
+| `help`                     | Show usage information                 |
 
 ## Options
 
-| Flag                    | Description                        |
-|-------------------------|------------------------------------|
-| `--debounce <ms>`       | Debounce interval (default: 800ms) |
-| `--log-file <path>`     | Write logs to file                 |
-| `--config <path>`       | Custom config file path            |
-| `--no-dotfiles`         | Ignore dotfiles                    |
+| Flag                    | Description                                   |
+|-------------------------|-----------------------------------------------|
+| `--root <path>`         | Drupal root directory (default: cwd)          |
+| `--debounce <ms>`       | Debounce interval (default: 800ms)            |
+| `--no-dotfiles`         | Exclude dotfiles from watching                |
+| `--no-tui`              | Disable TUI, use interactive CLI mode         |
+| `--notify`              | Send desktop notification on cache clear      |
+| `--log-file <path>`     | Write logs to file                            |
+| `--config <path>`       | Custom config file path                       |
+| `--commands-per-pattern <json>` | Override per-pattern commands        |
+| `--help` / `-h`         | Show help                                     |
+| `--version` / `-V`      | Show version and Go runtime                   |
+
+### --notify
+
+Sends a native OS desktop notification each time a cache clear completes:
+
+```bash
+vendor/bin/drupal-watcher start --notify
+```
+
+- **macOS**: uses `osascript` (built-in)
+- **Linux**: uses `notify-send` (requires `libnotify-bin`)
+- **Windows**: not yet supported
+
+Useful during active development — no need to look back at the terminal.
+
+### --root
+
+Point the watcher at a different Drupal root:
+
+```bash
+vendor/bin/drupal-watcher start --root /var/www/html
+vendor/bin/drupal-watcher status --root /var/www/html
+```
+
+### --commands-per-pattern
+
+Override per-pattern drush commands without editing the config file:
+
+```bash
+vendor/bin/drupal-watcher start --commands-per-pattern '{"css":"cc css-js","js":"cc css-js"}'
+```
+
+Accepts a JSON object mapping file extensions to drush commands.
+
+## TUI Commands
+
+While the TUI is running, type commands at the prompt:
+
+| Command                | Description                            |
+|------------------------|----------------------------------------|
+| `status`               | Show stats, memory, and kernel watches |
+| `help`                 | Show available commands                |
+| `stop` / `quit` / `exit` | Stop the watcher                     |
+
+Press `Ctrl+C` or `Ctrl+D` to quit at any time.
+
+## Interactive CLI Commands
+
+When running with `--no-tui`, type commands at the prompt:
+
+| Command                | Description                            |
+|------------------------|----------------------------------------|
+| `status`               | Show stats, memory, and kernel watches |
+| `monitor` / `m`        | Auto-refresh status every 2 seconds    |
+| `list` / `config`      | Show current configuration             |
+| `stats`                | Show runtime statistics and memory     |
+| `add <route>`          | Add a route and restart watcher        |
+| `remove <route>`       | Remove a route and restart watcher     |
+| `reload`               | Reload config from file                |
+| `help`                 | Show available commands                |
+| `stop` / `quit` / `exit` | Stop the watcher                     |
+
+### Monitor mode
+
+`monitor` refreshes the status pane every 2 seconds:
+
+```
+[15:30:00] ● Watcher running. PID 12345
+  Changes: 142  Clears: 18  Uptime: 30m
+  Memory: 28.4 MB  |  Kernel watches: 47
+  Monitor mode (press Enter to stop)...
+```
+
+Press Enter to exit monitor mode.
 
 ## Configuration
 
@@ -90,6 +187,18 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
 }
 ```
 
+| Field                 | Description                                                  |
+|-----------------------|--------------------------------------------------------------|
+| `routes`              | Directories to watch (relative to Drupal root)               |
+| `patterns`            | File extensions to trigger cache clears on                   |
+| `debounce`            | Milliseconds to wait before running drush after a change     |
+| `drushCmd`            | Custom path to the drush binary (auto-detected if omitted)   |
+| `drushCommand`        | Default drush command (default: `cr`)                        |
+| `drushArgs`           | Extra arguments to pass to drush                             |
+| `commandsPerPattern`  | Maps file extensions to specific drush commands              |
+| `postClearCommands`   | Shell commands to run after each cache clear                 |
+| `excludePatterns`     | Path substrings to exclude from watching                     |
+
 **commandsPerPattern** maps file extensions to drush commands. The most specific match wins (e.g., `.info.yml` matches before `.yml`). Falls back to `cr` if no pattern matches.
 
 ## How it works
@@ -99,29 +208,27 @@ A `watcher.config.json` is auto-created with sensible defaults. Edit it to custo
 3. When files change, debounces (default 800ms) collecting all changes into a batch
 4. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
 5. If any change requires a full rebuild (`cr`), it overrides all other commands
-6. Drush output and post-clear commands are printed to the terminal
+6. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
 7. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
 
-## Architecture
+### Drush optimizations
 
-```
-bin/drupal-watcher      → Shell launcher (downloads binary if missing)
-cmd/drupal-watcher/     → Entry point, flag parsing, command dispatch
-internal/
-  config/               → Config management, Drupal root detection, PID files
-  drush/                → Drush resolution, execution, health checks
-  watcher/              → fsnotify file watcher with debounce
-  cli/                  → Command implementations
-  utils/                → Color helpers and shared utilities
-```
+The watcher applies several optimizations to minimize overhead:
 
-## Drupal root detection
+| Optimization | Description |
+|---|---|
+| **Binary caching** | Resolved `drush` path cached after first lookup, avoids repeated `$PATH` scans |
+| **Batch cache clears** | Multiple `cc <type>` commands merged into a single `drush cc type1,type2,...` call |
+| **`cr` overrides** | If any change requires `drush cr`, all other commands are skipped |
+| **Quiet mode** | Drush runs with `--quiet --no-ansi` by default for minimal output overhead |
+
+On large debounce windows, rapid changes to different file types share a single PHP bootstrap instead of spawning separate processes.
+
+### Drupal root detection
 
 The watcher scans for `docroot/`, `web/`, `public/`, or `html/` directories containing `core/`, `modules/`, `themes/`, or `index.php`. The detected root is stored in the config file.
 
-## Cache clear per pattern
-
-Different file types run different drush commands:
+### Cache clear per pattern
 
 | Extension          | Drush command       |
 |--------------------|---------------------|
@@ -151,48 +258,6 @@ drush twig:debug off  # restores production settings
 
 Available since Drush 12.1+. Handles `twig.config` settings automatically — no manual cache clears needed.
 
-## Interactive commands
-
-While the watcher is running, type commands at the prompt:
-
-| Command                | Description                            |
-|------------------------|----------------------------------------|
-| `status`               | Show stats, memory, and kernel watches |
-| `monitor` / `m`        | Auto-refresh status every 2 seconds    |
-| `list` / `config`      | Show current configuration             |
-| `stats`                | Show runtime statistics and memory     |
-| `add <route>`          | Add a route and restart watcher        |
-| `remove <route>`       | Remove a route and restart watcher     |
-| `reload`               | Reload config from file                |
-| `help`                 | Show available commands                |
-| `stop` / `quit` / `exit` | Stop the watcher                     |
-
-### Monitor mode
-
-`monitor` refreshes the status pane every 2 seconds:
-
-```
-[15:30:00] ● Watcher running. PID 12345
-  Changes: 142  Clears: 18  Uptime: 30m
-  Memory: 28.4 MB  |  Kernel watches: 47
-  Monitor mode (press Enter to stop)...
-```
-
-Press Enter to exit monitor mode.
-
-## Drush optimizations
-
-The watcher applies several optimizations to minimize overhead:
-
-| Optimization | Description |
-|---|---|
-| **Binary caching** | Resolved `drush` path cached after first lookup, avoids repeated `$PATH` scans |
-| **Batch cache clears** | Multiple `cc <type>` commands merged into a single `drush cc type1,type2,...` call |
-| **`cr` overrides** | If any change requires `drush cr`, all other commands are skipped |
-| **Quiet mode** | Drush runs with `--quiet --no-ansi` by default for minimal output overhead |
-
-On large debounce windows, rapid changes to different file types share a single PHP bootstrap instead of spawning separate processes.
-
 ### Pre-warming caches (Drush 13+)
 
 `drush cache:warm` pre-builds caches so the first request isn't slow after a rebuild.
@@ -204,7 +269,26 @@ This is optional — add it to `postClearCommands` if you want automatic warming
 
 > **Note:** Warming can be slow on large sites. Not recommended during active development.
 
-## Development (requires Go)
+## PID management
+
+The watcher writes a PID file (`watcher.pid`) to prevent multiple instances. If the process crashes, `drupal-watcher stop` or `drupal-watcher reset` cleans up stale PID files.
+
+## Architecture
+
+```
+bin/drupal-watcher      → Shell launcher (downloads binary if missing)
+bin/install.php         → Composer hook, downloads binary for current OS/arch
+cmd/drupal-watcher/     → Entry point, flag parsing, command dispatch
+internal/
+  config/               → Config management, Drupal root detection, PID files
+  drush/                → Drush resolution, execution, health checks, OS notifications
+  watcher/              → fsnotify file watcher with debounce, atomic stats
+  cli/                  → All CLI and TUI command implementations
+  tui/                  → BubbleTea terminal UI (model, view, update, styles)
+  utils/                → Color helpers, format utilities, shared helpers
+```
+
+## Development (requires Go 1.24+)
 
 ```bash
 go test -count=1 ./...
@@ -216,9 +300,13 @@ go build -o drupal-watcher ./cmd/drupal-watcher
 
 ```bash
 GOOS=linux   GOARCH=amd64 go build -o drupal-watcher-linux-amd64   ./cmd/drupal-watcher
+GOOS=linux   GOARCH=arm64 go build -o drupal-watcher-linux-arm64   ./cmd/drupal-watcher
+GOOS=darwin  GOARCH=amd64 go build -o drupal-watcher-darwin-amd64  ./cmd/drupal-watcher
 GOOS=darwin  GOARCH=arm64 go build -o drupal-watcher-darwin-arm64  ./cmd/drupal-watcher
 GOOS=windows GOARCH=amd64 go build -o drupal-watcher-windows-amd64.exe ./cmd/drupal-watcher
 ```
+
+CI builds all platforms automatically on push to `main` and publishes releases.
 
 ## License
 
