@@ -156,6 +156,16 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		fmt.Printf("%s Watching all %d sites: %s\n", utils.P_INFO, len(siteList), utils.Cyan(drush.PrintSiteList(allSites)))
 	}
 
+	// Add per-site routes for site-specific modules/themes
+	if resolved := cfg.GetResolvedSites(); len(resolved) > 0 && cfg.DrupalRoot != nil {
+		for _, site := range resolved {
+			for _, sub := range []string{"modules/custom", "themes/custom"} {
+				route := filepath.Join(*cfg.DrupalRoot, "sites", site.Name, sub)
+				cfg.Routes = append(cfg.Routes, route)
+			}
+		}
+	}
+
 	// Start watcher
 	h, err := watcher.Start(cfg, logFile)
 	if err != nil {
