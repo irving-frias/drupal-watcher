@@ -100,22 +100,6 @@ func (m *Model) View() string {
 	events := m.viewport.View()
 	events = eventsStyle.Render(events)
 
-	if m.worldcupSidebar != "" && m.width >= 100 {
-		sw := m.width / 3
-		if sw < 30 {
-			sw = 30
-		}
-		sidebar := lipgloss.NewStyle().
-			Width(sw - 2).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("214")).
-			Padding(0, 1).
-			Render(m.worldcupSidebar)
-
-		events = lipgloss.JoinHorizontal(lipgloss.Top, events, sidebar)
-		events = eventsStyle.Width(m.width - 2).Render(events)
-	}
-
 	input := cmdStyle.Render(m.renderInput())
 
 	return lipgloss.JoinVertical(lipgloss.Left, status, events, input)

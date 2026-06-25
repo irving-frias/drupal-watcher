@@ -636,7 +636,6 @@ func CmdTui(root string, mgr *config.Manager) error {
 }
 
 func CmdHelp() {
-	extra := CmdHelpExtra()
 	fmt.Printf(`Usage: drupal-watcher <command> [options]
 
 Commands:
@@ -651,7 +650,7 @@ Commands:
   reset       Stop watcher and reset PID
   tui         Terminal UI (experimental)
   help        Show this help
-%s
+
 Options:
   --root <path>          Drupal root directory (default: cwd)
   --debounce <ms>        Debounce interval (default: 800)
@@ -660,7 +659,7 @@ Options:
   --notify               Send desktop notification on cache clear
   --log-file <path>      Write logs to file
   --commands-per-pattern <json>  Override pattern commands
-`, extra)
+`)
 }
 
 func restartWatcher(h *watcher.Handle, cfg config.Config, logFile *os.File) *watcher.Handle {

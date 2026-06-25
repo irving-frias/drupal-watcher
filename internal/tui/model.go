@@ -35,9 +35,6 @@ type Model struct {
 
 	siteFilter string
 	siteClears map[string]int64
-
-	worldcupSidebar     string
-	worldcupLastRefresh time.Time
 }
 
 type statusLine struct {
@@ -72,7 +69,6 @@ func NewModel(w *watcher.Handle) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	m.refreshWorldcup()
 	return tea.Batch(
 		tickCmd(),
 		listenForEvents(m.Watcher),
