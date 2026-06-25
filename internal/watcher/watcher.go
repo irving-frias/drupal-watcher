@@ -243,14 +243,15 @@ func processChange(h *Handle) {
 		}
 	}
 
+	isTUI := h.EventCh != nil
+
 	msg := fmt.Sprintf("Change detected: %s", utils.Dim(dispFile))
 	if changes > 1 {
 		msg = fmt.Sprintf("%d changes detected (last: %s)", changes, utils.Dim(dispFile))
 	}
-	fmt.Printf("%s %s\n", utils.Timestamp(), msg)
-
-	// Send event to TUI if connected
-	if h.EventCh != nil {
+	if !isTUI {
+		fmt.Printf("%s %s\n", utils.Timestamp(), msg)
+	} else {
 		select {
 		case h.EventCh <- EventMsg{
 			Type:      EventChange,
@@ -264,26 +265,23 @@ func processChange(h *Handle) {
 
 	cmdStr := strings.Join(cmds, " + ")
 
-	// Batch all cache clears into a single drush invocation
 	result := drush.RunCacheClears(h.Config, cmds)
 	h.Stats.Clears.Add(1)
 
-	status := utils.P_SUCCESS
-	if result.ExitCode != 0 {
-		status = utils.P_ERROR
-	}
-	fmt.Printf("%s %s drush %s (%v, exit %d)\n",
-		utils.Timestamp(), status, cmdStr, result.Duration, result.ExitCode)
-
-	if result.Stderr != "" {
-		fmt.Fprintf(os.Stderr, "  %s\n", utils.Dim(strings.TrimSpace(result.Stderr)))
-	}
-	if result.Stdout != "" && result.Stdout != "{}" {
-		fmt.Printf("  %s\n", utils.Dim(strings.TrimSpace(result.Stdout)))
-	}
-
-	// Send event to TUI if connected
-	if h.EventCh != nil {
+	if !isTUI {
+		status := utils.P_SUCCESS
+		if result.ExitCode != 0 {
+			status = utils.P_ERROR
+		}
+		fmt.Printf("%s %s drush %s (%v, exit %d)\n",
+			utils.Timestamp(), status, cmdStr, result.Duration, result.ExitCode)
+		if result.Stderr != "" {
+			fmt.Fprintf(os.Stderr, "  %s\n", utils.Dim(strings.TrimSpace(result.Stderr)))
+		}
+		if result.Stdout != "" && result.Stdout != "{}" {
+			fmt.Printf("  %s\n", utils.Dim(strings.TrimSpace(result.Stdout)))
+		}
+	} else {
 		select {
 		case h.EventCh <- EventMsg{
 			Type:      EventDrush,

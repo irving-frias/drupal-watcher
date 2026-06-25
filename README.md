@@ -92,11 +92,16 @@ Sends a native OS desktop notification each time a cache clear completes:
 vendor/bin/drupal-watcher start --notify
 ```
 
-- **macOS**: uses `osascript` (built-in)
-- **Linux**: uses `notify-send` (requires `libnotify-bin`)
-- **Windows**: not yet supported
+**Per-SO:**
 
-Useful during active development — no need to look back at the terminal.
+| SO | Método | Requisitos |
+|---|---|---|
+| **macOS** | `osascript` | Ninguno (built-in) |
+| **Linux** (nativo) | `notify-send` | `libnotify-bin` (Debian/Ubuntu) o `libnotify` (Fedora/Arch) |
+| **WSL** | `powershell.exe` → Toast de Windows | Ninguno (llama al PowerShell del host) |
+| **Windows** | `powershell` → ToastNotificationManager | Ninguno (built-in) |
+
+En WSL se detecta automáticamente leyendo `/proc/sys/kernel/osrelease` y usa `powershell.exe` para mostrar el Toast nativo de Windows 10/11. No requiere configurar nada.
 
 ### --root
 

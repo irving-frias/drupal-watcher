@@ -15,6 +15,15 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 )
 
+var isWSL = sync.OnceValue(func() bool {
+	data, err := os.ReadFile("/proc/sys/kernel/osrelease")
+	if err != nil {
+		return false
+	}
+	lower := strings.ToLower(string(data))
+	return strings.Contains(lower, "microsoft") || strings.Contains(lower, "wsl")
+})
+
 var (
 	cachedCmd string
 	cmdMu     sync.RWMutex
@@ -213,9 +222,34 @@ func NotifyOS(title, message string) {
 	case "darwin":
 		exec.Command("osascript", "-e",
 			fmt.Sprintf(`display notification "%s" with title "%s"`, message, title)).Start()
+
 	case "linux":
-		exec.Command("notify-send", title, message).Start()
+		if isWSL() {
+			notifyWindowsToast(title, message)
+		} else {
+			exec.Command("notify-send", title, message).Start()
+		}
+
+	case "windows":
+		notifyWindowsToast(title, message)
 	}
+}
+
+func notifyWindowsToast(title, message string) {
+	ps := fmt.Sprintf(`
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+$tmpl = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent([Windows.UI.Notifications.ToastTemplateType]::ToastText02)
+$text = $tmpl.GetElementsByTagName("text")
+$text.Item(0).AppendChild($tmpl.CreateTextNode("%s")) | Out-Null
+$text.Item(1).AppendChild($tmpl.CreateTextNode("%s")) | Out-Null
+$toast = [Windows.UI.Notifications.ToastNotification]::new($tmpl)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Drupal Watcher").Show($toast)`, title, message)
+
+	cmd := "powershell.exe"
+	if runtime.GOOS == "windows" {
+		cmd = "powershell"
+	}
+	exec.Command(cmd, "-NoProfile", "-Command", ps).Start()
 }
 
 func PromptConfirm(prompt string) bool {
