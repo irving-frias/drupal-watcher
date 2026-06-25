@@ -217,6 +217,29 @@ func parseFlags(args []string) (command string, flags map[string]interface{}, ex
 				flags["commands-per-pattern"] = cpp
 			}
 
+		case strings.HasPrefix(arg, "--site="):
+			val := strings.TrimPrefix(arg, "--site=")
+			flags["site"] = strings.Split(val, ",")
+
+		case arg == "--site" && i+1 < len(args):
+			i++
+			flags["site"] = strings.Split(args[i], ",")
+
+		case strings.HasPrefix(arg, "--exclude-site="):
+			val := strings.TrimPrefix(arg, "--exclude-site=")
+			flags["exclude-site"] = strings.Split(val, ",")
+
+		case arg == "--exclude-site" && i+1 < len(args):
+			i++
+			flags["exclude-site"] = strings.Split(args[i], ",")
+
+		case strings.HasPrefix(arg, "--uri="):
+			flags["uri"] = strings.TrimPrefix(arg, "--uri=")
+
+		case arg == "--uri" && i+1 < len(args):
+			i++
+			flags["uri"] = args[i]
+
 		case strings.HasPrefix(arg, "--root="):
 			flags["root"] = strings.TrimPrefix(arg, "--root=")
 

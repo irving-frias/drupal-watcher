@@ -176,10 +176,12 @@ func RunCacheClears(cfg DrushConfig, commands []string) DrushResult {
 	}
 
 	var result DrushResult
+	drushArgs := cfg.GetDrushArgs()
 	if hasCR {
-		result = Run(drushBase, []string{"cr"})
+		result = Run(drushBase, append(drushArgs, "cr"))
 	} else if len(ccTypes) > 0 {
-		result = Run(drushBase, []string{"cc", strings.Join(ccTypes, ",")})
+		ccArgs := append(drushArgs, "cc", strings.Join(ccTypes, ","))
+		result = Run(drushBase, ccArgs)
 	} else {
 		return DrushResult{ExitCode: 0}
 	}

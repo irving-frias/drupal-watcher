@@ -33,6 +33,7 @@ func (m mockConfig) GetPostClearCommands() []string        { return m.postClearC
 func (m mockConfig) GetCommandsPerPattern() map[string]string { return m.commandsPerPattern }
 func (m mockConfig) GetDrupalRoot() *string                 { return m.drupalRoot }
 func (m mockConfig) GetNotify() bool                        { return m.notify }
+func (m mockConfig) GetResolvedSites() []watcher.SiteInfo   { return nil }
 
 func TestWatcherStartStop(t *testing.T) {
 	tmp := t.TempDir()

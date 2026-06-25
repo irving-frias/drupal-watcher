@@ -16,6 +16,11 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 )
 
+type SiteInfo struct {
+	Name string
+	URI  string
+}
+
 type Config interface {
 	GetRoutes() []string
 	GetPatterns() []string
@@ -28,6 +33,7 @@ type Config interface {
 	GetCommandsPerPattern() map[string]string
 	GetDrupalRoot() *string
 	GetNotify() bool
+	GetResolvedSites() []SiteInfo
 }
 
 type Stats struct {
@@ -54,6 +60,7 @@ type EventMsg struct {
 	ExitCode  int
 	Duration  time.Duration
 	Stderr    string
+	SiteName  string
 	Error     error
 }
 
@@ -265,17 +272,50 @@ func processChange(h *Handle) {
 	}
 
 	cmdStr := strings.Join(cmds, " + ")
+	sites := h.Config.GetResolvedSites()
 
-	result := drush.RunCacheClears(h.Config, cmds)
-	h.Stats.Clears.Add(1)
+	if len(sites) == 0 {
+		result := drush.RunCacheClears(h.Config, cmds)
+		h.Stats.Clears.Add(1)
+		emitDrushResult(h, result, cmdStr, int(changes), dispFile, "")
+	} else {
+		var wg sync.WaitGroup
+		for _, s := range sites {
+			wg.Add(1)
+			go func(site SiteInfo) {
+				defer wg.Done()
+				siteCfg := &drush.SiteDrushConfig{
+					DrushConfig: h.Config,
+					Name:        site.Name,
+					URI:         site.URI,
+				}
+				result := drush.RunCacheClears(siteCfg, cmds)
+				emitDrushResult(h, result, cmdStr, int(changes), dispFile, site.Name)
+			}(s)
+		}
+		wg.Wait()
+	}
+
+	postClear := h.Config.GetPostClearCommands()
+	if len(postClear) > 0 {
+		drush.RunPostClearCommands(postClear)
+	}
+}
+
+func emitDrushResult(h *Handle, result drush.DrushResult, cmdStr string, changes int, dispFile, siteName string) {
+	isTUI := h.EventCh != nil
+	tag := ""
+	if siteName != "" {
+		tag = " [" + siteName + "]"
+	}
 
 	if !isTUI {
 		status := utils.P_SUCCESS
 		if result.ExitCode != 0 {
 			status = utils.P_ERROR
 		}
-		fmt.Printf("%s %s drush %s (%v, exit %d)\n",
-			utils.Timestamp(), status, cmdStr, result.Duration, result.ExitCode)
+		fmt.Printf("%s %s drush %s%s (%v, exit %d)\n",
+			utils.Timestamp(), status, cmdStr, tag, result.Duration, result.ExitCode)
 		if result.Stderr != "" {
 			fmt.Fprintf(os.Stderr, "  %s\n", utils.Dim(strings.TrimSpace(result.Stderr)))
 		}
@@ -288,19 +328,15 @@ func processChange(h *Handle) {
 			Type:      EventDrush,
 			Timestamp: time.Now(),
 			File:      dispFile,
-			Changes:   int(changes),
+			Changes:   changes,
 			Commands:  cmdStr,
 			ExitCode:  result.ExitCode,
 			Duration:  result.Duration,
 			Stderr:    strings.TrimSpace(result.Stderr),
+			SiteName:  siteName,
 		}:
 		default:
 		}
-	}
-
-	postClear := h.Config.GetPostClearCommands()
-	if len(postClear) > 0 {
-		drush.RunPostClearCommands(postClear)
 	}
 }
 

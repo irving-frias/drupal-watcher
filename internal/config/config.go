@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/irving-frias/drupal-watcher/internal/watcher"
 )
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -27,6 +28,8 @@ type Config struct {
 	CommandsPerPattern  map[string]string `json:"commandsPerPattern"`
 	DrupalRoot          *string           `json:"drupalRoot"`
 	Notify              bool              `json:"-"`
+	Sites               []string          `json:"sites,omitempty"`
+	resolvedSites       []watcher.SiteInfo
 }
 
 func (c Config) GetDrushCmd() *string                 { return c.DrushCmd }
@@ -40,6 +43,9 @@ func (c Config) GetDebounce() int                     { return c.Debounce }
 func (c Config) GetCommandsPerPattern() map[string]string { return c.CommandsPerPattern }
 func (c Config) GetNotify() bool                       { return c.Notify }
 func (c Config) GetPostClearCommands() []string       { return c.PostClearCommands }
+func (c Config) GetResolvedSites() []watcher.SiteInfo { return c.resolvedSites }
+
+func (c *Config) SetResolvedSites(sites []watcher.SiteInfo) { c.resolvedSites = sites }
 
 type Manager struct {
 	cache           map[string]*cacheEntry

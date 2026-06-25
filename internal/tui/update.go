@@ -105,7 +105,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if evt.ExitCode != 0 {
 				icon = errorStyle
 			}
-			line := fmt.Sprintf("drush %s (%v, exit %d)", evt.Commands, evt.Duration.Round(time.Millisecond), evt.ExitCode)
+			tag := ""
+			if evt.SiteName != "" {
+				tag = " [" + evt.SiteName + "]"
+			}
+			line := fmt.Sprintf("drush %s%s (%v, exit %d)", evt.Commands, tag, evt.Duration.Round(time.Millisecond), evt.ExitCode)
 			if evt.Stderr != "" {
 				line += "\n" + dim.Render(evt.Stderr)
 			}

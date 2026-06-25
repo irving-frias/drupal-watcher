@@ -85,6 +85,77 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		cfg.Notify = true
 	}
 
+	// Site resolution
+	drupalRoot := root
+	if cfg.DrupalRoot != nil {
+		drupalRoot = filepath.Join(root, *cfg.DrupalRoot)
+	}
+
+	if uri, ok := flags["uri"].(string); ok && uri != "" {
+		// Explicit --uri: single site mode
+		cfg.DrushArgs = append([]string{"--uri=" + uri}, cfg.DrushArgs...)
+	} else if include, ok := flags["site"].([]string); ok && len(include) > 0 {
+		// --site flag: load only specified sites from sites.yml
+		allSites, err := drush.LoadSitesYml(drupalRoot)
+		if err != nil {
+			return fmt.Errorf("%s %v", utils.P_ERROR, err)
+		}
+		filtered := drush.FilterSites(allSites, include, nil)
+		if len(filtered) == 0 {
+			return fmt.Errorf("%s No matching sites found in drush/sites.yml", utils.P_ERROR)
+		}
+		var siteList []watcher.SiteInfo
+		for _, s := range filtered {
+			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+		}
+		cfg.SetResolvedSites(siteList)
+		fmt.Printf("%s Watching sites: %s\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
+	} else if exclude, ok := flags["exclude-site"].([]string); ok && len(exclude) > 0 {
+		// --exclude-site: load all from sites.yml, exclude some
+		allSites, err := drush.LoadSitesYml(drupalRoot)
+		if err != nil {
+			return fmt.Errorf("%s %v", utils.P_ERROR, err)
+		}
+		filtered := drush.FilterSites(allSites, nil, exclude)
+		if len(filtered) == 0 {
+			return fmt.Errorf("%s All sites excluded. Nothing to watch.", utils.P_ERROR)
+		}
+		var siteList []watcher.SiteInfo
+		for _, s := range filtered {
+			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+		}
+		cfg.SetResolvedSites(siteList)
+		fmt.Printf("%s Watching sites: %s\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
+	} else if len(cfg.Sites) > 0 {
+		// Persisted sites from config file
+		allSites, err := drush.LoadSitesYml(drupalRoot)
+		if err != nil {
+			return fmt.Errorf("%s %v", utils.P_ERROR, err)
+		}
+		filtered := drush.FilterSites(allSites, cfg.Sites, nil)
+		if len(filtered) == 0 {
+			return fmt.Errorf("%s No matching sites in drush/sites.yml for config sites", utils.P_ERROR)
+		}
+		var siteList []watcher.SiteInfo
+		for _, s := range filtered {
+			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+		}
+		cfg.SetResolvedSites(siteList)
+		fmt.Printf("%s Watching sites: %s (from config)\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
+	} else if drush.HasMultiSite(drupalRoot) {
+		// Multi-site detected, try to load sites.yml
+		allSites, err := drush.LoadSitesYml(drupalRoot)
+		if err != nil {
+			return fmt.Errorf("%s Multi-site detected in sites/. Create drush/sites.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", utils.P_ERROR)
+		}
+		var siteList []watcher.SiteInfo
+		for _, s := range allSites {
+			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+		}
+		cfg.SetResolvedSites(siteList)
+		fmt.Printf("%s Watching all %d sites: %s\n", utils.P_INFO, len(siteList), utils.Cyan(drush.PrintSiteList(allSites)))
+	}
+
 	// Start watcher
 	h, err := watcher.Start(cfg, logFile)
 	if err != nil {
