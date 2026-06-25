@@ -192,7 +192,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		eventCh := make(chan watcher.EventMsg, 100)
 		h.EventCh = eventCh
 
-		p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen())
+		p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen(), tea.WithMouseCellMotion())
 		if _, err := p.Run(); err != nil {
 			fmt.Printf("%s TUI error: %v\n", utils.P_WARN, err)
 		}
@@ -317,7 +317,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		statusIcon = utils.P_WARN
 	}
 	fmt.Printf("\n%s Watcher stopped. %d changes, %d clears, uptime %v\n",
-		statusIcon, changes, clears, FormatDuration(uptime))
+		statusIcon, changes, clears, utils.FormatDuration(uptime))
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 	return nil
 }
@@ -441,7 +441,7 @@ func printMonitorStatus(root string, mgr *config.Manager) {
 	if running && starttime > 0 {
 		uptime := time.Since(time.UnixMilli(starttime))
 		fmt.Printf("%s Drupal Watcher is running (PID %s, uptime %v).\n",
-			utils.Green("●"), utils.Cyan(pidStr), utils.Green(FormatDuration(uptime)))
+			utils.Green("●"), utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
 	} else if running {
 		fmt.Printf("%s Drupal Watcher is running (PID %s).\n",
 			utils.Green("●"), utils.Cyan(pidStr))
@@ -478,7 +478,7 @@ func CmdStatus(root string, mgr *config.Manager) error {
 	if running && starttime > 0 {
 		uptime := time.Since(time.UnixMilli(starttime))
 		fmt.Printf("%s Drupal Watcher is running (PID %s, uptime %v).\n",
-			utils.Green("●"), utils.Cyan(pidStr), utils.Green(FormatDuration(uptime)))
+			utils.Green("●"), utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
 		fmt.Printf("  Memory: %s\n", utils.Cyan("see 'stats' at runtime"))
 	} else if running {
 		fmt.Printf("%s Drupal Watcher is running (PID %s).\n",
@@ -620,7 +620,6 @@ func CmdTui(root string, mgr *config.Manager) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	cfg.Debounce = 200
 	eventCh := make(chan watcher.EventMsg, 100)
 	h, err := watcher.StartWithEvents(cfg, eventCh)
 	if err != nil {
@@ -628,7 +627,7 @@ func CmdTui(root string, mgr *config.Manager) error {
 	}
 	defer watcher.Stop(h)
 
-	p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		return err
 	}
@@ -686,7 +685,7 @@ func printInteractiveStatus(h *watcher.Handle) {
 	uptime := time.Since(h.Stats.StartTime)
 	fmt.Printf("  %s Watcher running. PID %d\n", utils.Green("●"), os.Getpid())
 	fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
-		h.Stats.Changes.Load(), h.Stats.Clears.Load(), FormatDuration(uptime))
+		h.Stats.Changes.Load(), h.Stats.Clears.Load(), utils.FormatDuration(uptime))
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 }
 
@@ -766,20 +765,4 @@ func IsPidRunning(pid int) bool {
 	return true
 }
 
-func FormatDuration(d time.Duration) string {
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	minutes := int(d.Minutes()) % 60
-	seconds := int(d.Seconds()) % 60
 
-	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
-	}
-	if hours > 0 {
-		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
-	}
-	if minutes > 0 {
-		return fmt.Sprintf("%dm %ds", minutes, seconds)
-	}
-	return fmt.Sprintf("%ds", seconds)
-}

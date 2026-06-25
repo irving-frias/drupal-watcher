@@ -11,11 +11,14 @@ import (
 )
 
 const eventBufferSize = 100
+const maxHistory = 100
+const sparklineSize = 20
 
 type eventLine struct {
 	Timestamp string
 	Content   string
 	Style     lipgloss.Style
+	Count     int
 }
 
 type Model struct {
@@ -25,7 +28,6 @@ type Model struct {
 	eventCap int
 	viewport viewport.Model
 	input    textinput.Model
-	ready    bool
 	width    int
 
 	history    []string
@@ -35,6 +37,11 @@ type Model struct {
 
 	siteFilter string
 	siteClears map[string]int64
+
+	showHelp     bool
+	memHistory   []float64
+	completions  []string
+	completionIdx int
 }
 
 type statusLine struct {
@@ -60,11 +67,11 @@ func NewModel(w *watcher.Handle) *Model {
 		eventCap:   eventBufferSize,
 		viewport:   viewport.New(78, 10),
 		input:      ti,
-		ready:      true,
 		width:      80,
 		historyIdx: -1,
 		autoScroll: true,
 		siteClears: make(map[string]int64),
+		memHistory: make([]float64, 0, sparklineSize),
 	}
 }
 
@@ -96,8 +103,28 @@ func listenForEvents(w *watcher.Handle) tea.Cmd {
 }
 
 func (m *Model) pushEvent(line eventLine) {
+	if len(m.events) > 0 {
+		last := &m.events[len(m.events)-1]
+		if last.Content == line.Content {
+			last.Count++
+			return
+		}
+	}
+	line.Count = 1
 	m.events = append(m.events, line)
 	if len(m.events) > m.eventCap {
 		m.events = m.events[1:]
 	}
 }
+
+func (m *Model) addToHistory(cmd string) {
+	if len(m.history) > 0 && m.history[len(m.history)-1] == cmd {
+		return
+	}
+	m.history = append(m.history, cmd)
+	if len(m.history) > maxHistory {
+		m.history = m.history[1:]
+	}
+}
+
+var commands = []string{"status", "stats", "filter", "help", "stop", "quit", "exit"}

@@ -2,11 +2,45 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
+
+func sparkline(vals []float64, max int) string {
+	if len(vals) == 0 {
+		return ""
+	}
+	chars := []string{"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"}
+	mx := 0.0
+	for _, v := range vals {
+		if v > mx {
+			mx = v
+		}
+	}
+	if mx == 0 {
+		mx = 1
+	}
+	n := len(vals)
+	if n > max {
+		n = max
+		vals = vals[len(vals)-max:]
+	}
+	var b strings.Builder
+	for _, v := range vals {
+		idx := int(math.Round((v / mx) * 7))
+		if idx < 0 {
+			idx = 0
+		}
+		if idx > 7 {
+			idx = 7
+		}
+		b.WriteString(chars[idx])
+	}
+	return b.String()
+}
 
 func (m *Model) renderStatus() string {
 	s := m.status
@@ -35,9 +69,15 @@ func (m *Model) renderStatus() string {
 		memColor = yellow
 	}
 
-	memLine := fmt.Sprintf("Memory: %s  |  Kernel watches: %d  |  Changes: %d  |  Clears: %d",
+	spark := sparkline(m.memHistory, sparklineSize)
+	sparkStr := ""
+	if spark != "" {
+		sparkStr = "  " + dim.Render(spark)
+	}
+
+	memLine := fmt.Sprintf("Memory: %s%s  |  Kernel watches: %d  |  Changes: %d  |  Clears: %d",
 		memColor.Render(fmt.Sprintf("%.1f MB", s.AllocMB)),
-		s.WatchCount, s.Changes, s.Clears)
+		sparkStr, s.WatchCount, s.Changes, s.Clears)
 
 	// Per-site clears
 	if len(m.siteClears) > 0 {
@@ -73,7 +113,11 @@ func (m *Model) renderEvents() string {
 		}
 		ts := dim.Render(e.Timestamp)
 		icon := e.Style.String()
-		lines = append(lines, fmt.Sprintf("%s %s %s", ts, icon, e.Content))
+		content := e.Content
+		if e.Count > 1 {
+			content = fmt.Sprintf("%dx %s", e.Count, e.Content)
+		}
+		lines = append(lines, fmt.Sprintf("%s %s %s", ts, icon, content))
 	}
 
 	if len(lines) == 0 {
@@ -90,12 +134,39 @@ func (m *Model) renderInput() string {
 	return fmt.Sprintf("%s%s", prefix, m.input.View())
 }
 
-func (m *Model) View() string {
-	if !m.ready {
-		return "Initializing..."
-	}
+func (m *Model) renderHelp() string {
+	var b strings.Builder
+	b.WriteString(bold.Render("  drupal-watcher — Commands"))
+	b.WriteString("\n" + dim.Render("  ───────────────────────────────────"))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("\n  %s    Show watcher status and runtime stats", green.Render("status")))
+	b.WriteString(fmt.Sprintf("\n  %s      Show clear counts per site", green.Render("stats")))
+	b.WriteString(fmt.Sprintf("\n  %s  <site>  Filter events by site name", green.Render("filter")))
+	b.WriteString(fmt.Sprintf("\n  %s         Show this help", green.Render("help")))
+	b.WriteString(fmt.Sprintf("\n  %s       Stop the watcher and exit", green.Render("stop")))
+	b.WriteString("\n")
+	b.WriteString("\n" + dim.Render("  Keys"))
+	b.WriteString("\n" + dim.Render("  ───────────────────────────────────"))
+	b.WriteString(fmt.Sprintf("\n  %s    Quit", dim.Render("ctrl+c / ctrl+d")))
+	b.WriteString(fmt.Sprintf("\n  %s   Page up/down in event log", dim.Render("pgup / pgdn")))
+	b.WriteString(fmt.Sprintf("\n  %s    Scroll to top", dim.Render("home")))
+	b.WriteString(fmt.Sprintf("\n  %s     Scroll to bottom", dim.Render("end")))
+	b.WriteString(fmt.Sprintf("\n  %s   Toggle auto-scroll", dim.Render("a")))
+	b.WriteString(fmt.Sprintf("\n  %s         Toggle this help", dim.Render("?")))
+	b.WriteString(fmt.Sprintf("\n  %s    Navigate command history", dim.Render("↑ / ↓")))
+	b.WriteString(fmt.Sprintf("\n  %s         Mouse wheel to scroll", dim.Render("scroll")))
+	b.WriteString(fmt.Sprintf("\n  %s Tab   Complete commands / site names", dim.Render("tab")))
+	b.WriteString("\n\n" + dim.Render("  Press ? or Esc to close help"))
+	return b.String()
+}
 
+func (m *Model) View() string {
 	status := statusStyle.Render(m.renderStatus())
+
+	if m.showHelp {
+		content := helpStyle.Render(m.renderHelp())
+		return lipgloss.JoinVertical(lipgloss.Left, status, content)
+	}
 
 	events := m.viewport.View()
 	events = eventsStyle.Render(events)

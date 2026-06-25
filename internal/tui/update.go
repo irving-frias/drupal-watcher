@@ -8,25 +8,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
 )
-
-func fmtDuration(d time.Duration) string {
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	minutes := int(d.Minutes()) % 60
-	seconds := int(d.Seconds()) % 60
-	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds)
-	}
-	if hours > 0 {
-		return fmt.Sprintf("%dh %dm %ds", hours, minutes, seconds)
-	}
-	if minutes > 0 {
-		return fmt.Sprintf("%dm %ds", minutes, seconds)
-	}
-	return fmt.Sprintf("%ds", seconds)
-}
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -36,6 +20,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		statusStyle = statusStyle.Width(cw)
 		eventsStyle = eventsStyle.Width(cw)
 		cmdStyle = cmdStyle.Width(cw)
+		helpStyle = helpStyle.Width(cw - 4)
 
 		vpHeight := msg.Height - 9
 		if vpHeight < 5 {
@@ -51,12 +36,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "ctrl+d":
 			return m, tea.Quit
 
+		case "?":
+			m.showHelp = !m.showHelp
+			return m, nil
+
+		case "esc":
+			if m.showHelp {
+				m.showHelp = false
+				return m, nil
+			}
+
+		case "home":
+			m.viewport.GotoTop()
+			return m, nil
+
+		case "end":
+			if !m.showHelp {
+				m.autoScroll = !m.autoScroll
+				if m.autoScroll {
+					m.viewport.GotoBottom()
+				}
+			}
+			return m, nil
+
+		case "a":
+			m.autoScroll = !m.autoScroll
+			if m.autoScroll {
+				m.viewport.GotoBottom()
+			}
+			return m, nil
+
 		case "pgup", "pgdown":
-			var cmd tea.Cmd
-			m.viewport, cmd = m.viewport.Update(msg)
-			return m, cmd
+			if !m.showHelp {
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
+
+		case "tab":
+			m.completeInput()
+			return m, nil
 
 		case "up":
+			if m.showHelp {
+				return m, nil
+			}
 			if len(m.history) == 0 {
 				return m, nil
 			}
@@ -72,6 +96,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 
 		case "down":
+			if m.showHelp {
+				return m, nil
+			}
 			if m.historyIdx == -1 {
 				return m, nil
 			}
@@ -85,26 +112,32 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "end":
-			m.autoScroll = !m.autoScroll
-			if m.autoScroll {
-				m.viewport.GotoBottom()
-			}
-			return m, nil
-
 		case "enter":
+			if m.showHelp {
+				m.showHelp = false
+				return m, nil
+			}
 			cmd := strings.TrimSpace(m.input.Value())
 			m.input.SetValue("")
 			m.historyIdx = -1
+			m.completions = nil
 			if cmd == "" {
 				return m, nil
 			}
-			if len(m.history) == 0 || m.history[len(m.history)-1] != cmd {
-				m.history = append(m.history, cmd)
-			}
+			m.addToHistory(cmd)
 			return m, m.executeCommand(cmd)
 
+		case "mouse":
+			if !m.showHelp {
+				var cmd tea.Cmd
+				m.viewport, cmd = m.viewport.Update(msg)
+				return m, cmd
+			}
+
 		default:
+			if msg.String() != "" {
+				m.completions = nil
+			}
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			return m, cmd
@@ -117,9 +150,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		runtime.ReadMemStats(&mem)
 		allocMB = float64(mem.Alloc) / 1024 / 1024
 
+		m.memHistory = append(m.memHistory, allocMB)
+		if len(m.memHistory) > sparklineSize {
+			m.memHistory = m.memHistory[1:]
+		}
+
 		m.status = statusLine{
 			PID:        os.Getpid(),
-			Uptime:     fmtDuration(uptime),
+			Uptime:     utils.FormatDuration(uptime),
 			Changes:    m.Watcher.Stats.Changes.Load(),
 			Clears:     m.Watcher.Stats.Clears.Load(),
 			WatchCount: m.Watcher.WatchCount.Load(),
@@ -187,6 +225,65 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) completeInput() {
+	input := strings.TrimSpace(m.input.Value())
+	parts := strings.Fields(input)
+
+	if input == "" {
+		if m.completions == nil {
+			m.completions = commands
+			m.completionIdx = 0
+		} else {
+			m.completionIdx = (m.completionIdx + 1) % len(m.completions)
+		}
+		m.input.SetValue(m.completions[m.completionIdx] + " ")
+		m.input.CursorEnd()
+		return
+	}
+
+	if len(parts) == 1 && !strings.HasSuffix(input, " ") {
+		prefix := parts[0]
+		var matches []string
+		for _, cmd := range commands {
+			if strings.HasPrefix(cmd, prefix) && cmd != prefix {
+				matches = append(matches, cmd)
+			}
+		}
+		if len(matches) > 0 {
+			if m.completions == nil || m.completionIdx >= len(m.completions) {
+				m.completions = matches
+				m.completionIdx = 0
+			} else {
+				m.completionIdx = (m.completionIdx + 1) % len(m.completions)
+			}
+			m.input.SetValue(m.completions[m.completionIdx] + " ")
+			m.input.CursorEnd()
+		}
+		return
+	}
+
+	if parts[0] == "filter" && len(parts) == 2 && !strings.HasSuffix(input, " ") {
+		prefix := parts[1]
+		var matches []string
+		for name := range m.siteClears {
+			if strings.HasPrefix(name, prefix) {
+				matches = append(matches, name)
+			}
+		}
+		if len(matches) > 0 {
+			if m.completions == nil || m.completionIdx >= len(m.completions) {
+				m.completions = matches
+				m.completionIdx = 0
+			} else {
+				m.completionIdx = (m.completionIdx + 1) % len(m.completions)
+			}
+			m.input.SetValue("filter " + m.completions[m.completionIdx])
+			m.input.CursorEnd()
+		}
+		return
+	}
+}
+
 func (m *Model) executeCommand(cmd string) tea.Cmd {
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
@@ -199,15 +296,11 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),
 			Content: fmt.Sprintf("PID %d | Changes: %d | Clears: %d | Uptime: %s",
-				os.Getpid(), m.Watcher.Stats.Changes.Load(), m.Watcher.Stats.Clears.Load(), fmtDuration(uptime)),
+				os.Getpid(), m.Watcher.Stats.Changes.Load(), m.Watcher.Stats.Clears.Load(), utils.FormatDuration(uptime)),
 			Style: infoStyle,
 		})
 	case "help":
-		m.pushEvent(eventLine{
-			Timestamp: time.Now().Format("15:04:05"),
-			Content:   "Commands: status, stats, filter <site>, help, stop, quit",
-			Style:     infoStyle,
-		})
+		m.showHelp = true
 	case "filter":
 		if len(parts) > 1 {
 			m.siteFilter = parts[1]

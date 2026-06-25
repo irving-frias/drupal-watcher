@@ -10,6 +10,7 @@ import (
 
 	"github.com/irving-frias/drupal-watcher/internal/cli"
 	"github.com/irving-frias/drupal-watcher/internal/config"
+	"github.com/irving-frias/drupal-watcher/internal/utils"
 )
 
 func TestPkgVersion(t *testing.T) {
@@ -30,7 +31,7 @@ func TestFormatDuration(t *testing.T) {
 		{90061 * time.Second, "1d 1h 1m 1s"},
 	}
 	for _, tt := range tests {
-		result := cli.FormatDuration(tt.d)
+		result := utils.FormatDuration(tt.d)
 		if result != tt.expected {
 			t.Errorf("FormatDuration(%v) = %s, want %s", tt.d, result, tt.expected)
 		}
