@@ -15,15 +15,12 @@ var bold = lipgloss.NewStyle().Bold(true)
 
 func (m *Model) refreshWorldcup() {
 	client := wc.NewClient()
-
 	if !wc.Enabled() {
 		return
 	}
-
 	if err := client.EnsureTeams(); err != nil {
 		return
 	}
-
 	games, err := client.FetchGames()
 	if err != nil {
 		return
@@ -32,7 +29,6 @@ func (m *Model) refreshWorldcup() {
 	if err != nil {
 		groups = nil
 	}
-
 	var b strings.Builder
 	buildSidebar(&b, client, games, groups)
 	m.worldcupSidebar = b.String()
@@ -41,25 +37,31 @@ func (m *Model) refreshWorldcup() {
 
 func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups []wc.Group) {
 	now := time.Now().Local()
-	todayStr := now.Format("Jan 2")
 
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).Render(" ⚽ World Cup 2026 "))
 	b.WriteString("\n" + dim.Render("────────────────────"))
 
 	// ── Today's matches ──
-	b.WriteString("\n" + yellow.Render(" TODAY ") + dim.Render(todayStr))
-
-	shown := 0
+	todayCount := 0
 	for _, g := range games {
 		if !isSidebarToday(g.LocalDate) {
 			continue
 		}
-		if shown >= 4 {
-			b.WriteString("\n" + dim.Render("  ..."))
-			break
+		home := realName(g.HomeTeamNameEn, g.HomeTeamLabel)
+		away := realName(g.AwayTeamNameEn, g.AwayTeamLabel)
+		if home == "" || away == "" {
+			continue
 		}
-		home := teamName(g)
-		away := teamAway(g)
+		if todayCount == 0 {
+			b.WriteString("\n" + yellow.Render(" TODAY ") + dim.Render(now.Format("Jan 2")))
+		}
+		if todayCount >= 3 {
+			if todayCount == 3 {
+				b.WriteString("\n" + dim.Render("  ..."))
+			}
+			todayCount++
+			continue
+		}
 
 		hs := g.HomeScore
 		as := g.AwayScore
@@ -71,26 +73,23 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 		}
 
 		status := statusSuffix(g.TimeElapsed)
-		home = truncateStr(home, 14)
-		away = truncateStr(away, 14)
 		b.WriteString(fmt.Sprintf("\n  %s %s-%s %s%s",
-			dim.Render(home), bold.Render(hs), bold.Render(as), dim.Render(away), status))
-		shown++
+			dim.Render(truncateStr(home, 14)),
+			bold.Render(hs), bold.Render(as),
+			dim.Render(truncateStr(away, 14)), status))
+		todayCount++
 	}
-	if shown == 0 {
+	if todayCount == 0 {
+		b.WriteString("\n" + yellow.Render(" TODAY ") + dim.Render(now.Format("Jan 2")))
 		b.WriteString(dim.Render("\n  No matches today"))
 	}
 
-	// ── Group standings ──
-	maxGroups := 4
+	// ── Group standings (top 2 groups) ──
 	if groups != nil {
 		for i, grp := range groups {
-			if i >= maxGroups {
+			if i >= 2 {
 				break
 			}
-
-			b.WriteString("\n" + dim.Render("────────────────────"))
-			b.WriteString("\n  " + bold.Render("Group "+grp.Name))
 
 			top2 := make([]wc.GroupStanding, len(grp.Teams))
 			copy(top2, grp.Teams)
@@ -104,8 +103,14 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 				}
 			}
 
-			for _, t := range top2[:min(2, len(top2))] {
+			b.WriteString("\n" + dim.Render("────────────────────"))
+			b.WriteString("\n  " + bold.Render("Group "+grp.Name))
+			limit := min(2, len(top2))
+			for _, t := range top2[:limit] {
 				n := client.TeamName(t.TeamID)
+				if n == "" {
+					n = t.TeamID
+				}
 				ptsStyle := dim
 				if t.Pts != "0" {
 					ptsStyle = bold
@@ -116,36 +121,47 @@ func buildSidebar(b *strings.Builder, client *wc.Client, games []wc.Game, groups
 		}
 	}
 
-	// ── Upcoming matches ──
-	upcoming := nextMatches(games, now, 3)
-	if len(upcoming) > 0 {
-		b.WriteString("\n" + dim.Render("────────────────────"))
-		b.WriteString("\n" + yellow.Render(" NEXT"))
-		for _, g := range upcoming {
-			home := teamName(g)
-			away := teamAway(g)
-			home = truncateStr(home, 12)
-			away = truncateStr(away, 12)
-			b.WriteString(fmt.Sprintf("\n  %s", dim.Render(home+" vs "+away)))
+	// ── Upcoming matches (real teams only) ──
+	b.WriteString("\n" + dim.Render("────────────────────"))
+	b.WriteString("\n" + yellow.Render(" NEXT"))
+	shownNext := 0
+	for _, g := range games {
+		if shownNext >= 3 {
+			break
 		}
+		home := realName(g.HomeTeamNameEn, g.HomeTeamLabel)
+		away := realName(g.AwayTeamNameEn, g.AwayTeamLabel)
+		if home == "" || away == "" {
+			continue
+		}
+		datePart := strings.TrimSpace(strings.SplitN(g.LocalDate, " ", 2)[0])
+		t, err := time.Parse("01/02/2006", datePart)
+		if err != nil || t.Before(now.Truncate(24*time.Hour)) {
+			continue
+		}
+		if strings.ToLower(g.TimeElapsed) != "notstarted" {
+			continue
+		}
+		b.WriteString(fmt.Sprintf("\n  %s vs %s",
+			dim.Render(truncateStr(home, 11)), dim.Render(truncateStr(away, 11))))
+		shownNext++
+	}
+	if shownNext == 0 {
+		b.WriteString(dim.Render("\n  —"))
 	}
 
-	b.WriteString("\n" + dim.Render("────────────────────"))
 	b.WriteString(dim.Render("\n  :refresh — update"))
 }
 
-func teamName(g wc.Game) string {
-	if g.HomeTeamNameEn != "" {
-		return g.HomeTeamNameEn
+func realName(nameEn, label string) string {
+	n := nameEn
+	if n == "" {
+		n = label
 	}
-	return g.HomeTeamLabel
-}
-
-func teamAway(g wc.Game) string {
-	if g.AwayTeamNameEn != "" {
-		return g.AwayTeamNameEn
+	if n == "" || strings.HasPrefix(n, "Winner") || strings.HasPrefix(n, "Runner-up") || strings.HasPrefix(n, "Loser") || strings.HasPrefix(n, "3rd") {
+		return ""
 	}
-	return g.AwayTeamLabel
+	return n
 }
 
 func statusSuffix(elapsed string) string {
@@ -157,25 +173,6 @@ func statusSuffix(elapsed string) string {
 	default:
 		return yellow.Render(" " + elapsed)
 	}
-}
-
-func nextMatches(games []wc.Game, now time.Time, limit int) []wc.Game {
-	var result []wc.Game
-	for _, g := range games {
-		if len(result) >= limit {
-			break
-		}
-		datePart := strings.TrimSpace(strings.SplitN(g.LocalDate, " ", 2)[0])
-		t, err := time.Parse("01/02/2006", datePart)
-		if err != nil || t.Before(now.Truncate(24*time.Hour)) {
-			continue
-		}
-		if strings.ToLower(g.TimeElapsed) != "notstarted" {
-			continue
-		}
-		result = append(result, g)
-	}
-	return result
 }
 
 func isSidebarToday(dateStr string) bool {
