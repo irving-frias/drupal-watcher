@@ -29,6 +29,7 @@
 - Convention: `CmdStart`, `CmdList`, `CmdStatus` etc. for command functions
 - Config satisfies both `watcher.Config` and `drush.DrushConfig` interfaces via method set
 - PID/starttime files stored in project root (`cwd/`) by default, or in `root` if specified
+- **Releases**: antes de cada release, actualizar `composer.json` → `extra.drupal-watcher-version`. El workflow en `build.yml` lee esa versión, crea el tag, y auto-bupea el patch post-release
 
 ## Key types
 - `config.Config` — Main configuration struct with all watcher settings
