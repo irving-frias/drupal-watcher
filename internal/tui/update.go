@@ -256,7 +256,7 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 		return m.handleWorldcup(subview)
 	case "back":
 		m.worldcupMode = false
-		m.worldcupContent = ""
+		m.worldcupSidebar = ""
 	case "stop", "quit", "exit":
 		return tea.Quit
 	default:

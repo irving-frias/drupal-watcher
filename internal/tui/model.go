@@ -36,9 +36,9 @@ type Model struct {
 	siteFilter string
 	siteClears map[string]int64
 
-	worldcupMode    bool
-	worldcupView    string
-	worldcupContent string
+	worldcupMode   bool
+	worldcupView   string
+	worldcupSidebar string
 }
 
 type statusLine struct {

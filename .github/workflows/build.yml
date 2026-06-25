@@ -43,9 +43,9 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            go build -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.exe" ./cmd/drupal-watcher
+            go build -tags worldcup -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.exe" ./cmd/drupal-watcher
           else
-            go build -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/drupal-watcher
+            go build -tags worldcup -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}" ./cmd/drupal-watcher
           fi
 
       - name: Package (unix)

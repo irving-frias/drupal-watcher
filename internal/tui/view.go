@@ -97,13 +97,21 @@ func (m *Model) View() string {
 
 	status := statusStyle.Render(m.renderStatus())
 
-	var events string
-	if m.worldcupMode && m.worldcupContent != "" {
-		events = dim.Render("World Cup 2026 — ") + yellow.Render(m.worldcupView) + "\n" + m.worldcupContent
-	} else {
-		events = m.viewport.View()
-	}
+	events := m.viewport.View()
 	events = eventsStyle.Render(events)
+
+	if m.worldcupMode && m.worldcupSidebar != "" {
+		sidebar := lipgloss.NewStyle().
+			Width(m.width/3 - 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("214")).
+			Padding(0, 1).
+			Render(m.worldcupSidebar)
+
+		events = lipgloss.JoinHorizontal(lipgloss.Top, events, sidebar)
+		events = eventsStyle.Width(m.width - 2).Render(events)
+	}
+
 	input := cmdStyle.Render(m.renderInput())
 
 	return lipgloss.JoinVertical(lipgloss.Left, status, events, input)
