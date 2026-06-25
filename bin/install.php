@@ -67,7 +67,7 @@ if ($vendorBin) {
 
 // Read version from our composer.json
 $composerMeta = json_decode(file_get_contents($packageJson), true);
-$expectedVersion = $composerMeta['extra']['drupal-watcher-version'] ?? 'v1.0.0';
+$expectedVersion = $composerMeta['extra']['drupal-watcher-version'] ?? '1.0.0';
 
 // ─── Step 3: check if binary needs download ────────────────────────────────
 $needsDownload = true;

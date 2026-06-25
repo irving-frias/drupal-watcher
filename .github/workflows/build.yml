@@ -5,9 +5,6 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -58,45 +55,10 @@ jobs:
         run: |
           zip "drupal-watcher-windows-${{ matrix.goarch }}.zip" "drupal-watcher-windows-${{ matrix.goarch }}.exe"
 
-      - name: Stage artifact
-        run: |
-          mkdir -p /tmp/artifact
-          cp drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.* /tmp/artifact/
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
           name: drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: /tmp/artifact/*
+          path: |
+            drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.*
           compression-level: 0
-
-  release:
-    needs: [test, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Get version
-        id: version
-        run: |
-          BASE=$(jq -r '.extra["drupal-watcher-version"] // "v1.0.0"' composer.json)
-          echo "tag=${BASE}.${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Collect assets
-        run: |
-          mkdir -p assets
-          find artifacts -type f | while read f; do
-            cp "$f" assets/
-          done
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: drupal-watcher ${{ steps.version.outputs.tag }}
-          files: assets/*
-          fail_on_unmatched_files: false
-          generate_release_notes: true
