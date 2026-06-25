@@ -59,13 +59,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
-		case "a":
-			m.autoScroll = !m.autoScroll
-			if m.autoScroll {
-				m.viewport.GotoBottom()
-			}
-			return m, nil
-
 		case "pgup", "pgdown":
 			if !m.showHelp {
 				var cmd tea.Cmd
@@ -127,19 +120,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.addToHistory(cmd)
 			return m, m.executeCommand(cmd)
 
-		case "mouse":
-			if !m.showHelp {
-				var cmd tea.Cmd
-				m.viewport, cmd = m.viewport.Update(msg)
-				return m, cmd
-			}
-
 		default:
 			if msg.String() != "" {
 				m.completions = nil
 			}
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
+			return m, cmd
+		}
+
+	case tea.MouseMsg:
+		if !m.showHelp {
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
 		}
 
