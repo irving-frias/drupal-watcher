@@ -32,7 +32,10 @@ type DrushConfig interface {
 	GetDrushCommand() string
 	GetDrushArgs() []string
 	GetDrupalRoot() *string
+	GetNotify() bool
 }
+
+var NotifyFunc = NotifyOS
 
 func GetCmd(cfg DrushConfig) string {
 	if d := cfg.GetDrushCmd(); d != nil && *d != "" {
@@ -163,13 +166,24 @@ func RunCacheClears(cfg DrushConfig, commands []string) DrushResult {
 		}
 	}
 
+	var result DrushResult
 	if hasCR {
-		return Run(drushBase, []string{"cr"})
+		result = Run(drushBase, []string{"cr"})
+	} else if len(ccTypes) > 0 {
+		result = Run(drushBase, []string{"cc", strings.Join(ccTypes, ",")})
+	} else {
+		return DrushResult{ExitCode: 0}
 	}
-	if len(ccTypes) > 0 {
-		return Run(drushBase, []string{"cc", strings.Join(ccTypes, ",")})
+
+	if cfg != nil && cfg.GetNotify() && result.ExitCode == 0 {
+		cmdStr := "cr"
+		if !hasCR {
+			cmdStr = "cc " + strings.Join(ccTypes, ",")
+		}
+		NotifyFunc("Drupal Watcher", "drush "+cmdStr)
 	}
-	return DrushResult{ExitCode: 0}
+
+	return result
 }
 
 func RunPostClearCommands(commands []string) {
@@ -191,6 +205,16 @@ func RunPostClearCommands(commands []string) {
 		if err := cmd.Run(); err != nil {
 			fmt.Printf("%s Post-clear command failed: %v\n", utils.P_WARN, err)
 		}
+	}
+}
+
+func NotifyOS(title, message string) {
+	switch runtime.GOOS {
+	case "darwin":
+		exec.Command("osascript", "-e",
+			fmt.Sprintf(`display notification "%s" with title "%s"`, message, title)).Start()
+	case "linux":
+		exec.Command("notify-send", title, message).Start()
 	}
 }
 

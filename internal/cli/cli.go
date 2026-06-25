@@ -79,6 +79,11 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		cfg.ExcludePatterns = append(cfg.ExcludePatterns, "/.")
 	}
 
+	// Handle notify
+	if n, ok := flags["notify"].(bool); ok && n {
+		cfg.Notify = true
+	}
+
 	// Start watcher
 	h, err := watcher.Start(cfg, logFile)
 	if err != nil {
@@ -548,6 +553,7 @@ Options:
   --root <path>          Drupal root directory (default: cwd)
   --debounce <ms>        Debounce interval (default: 800)
   --no-dotfiles          Ignore dotfiles
+  --notify               Send desktop notification on cache clear
   --log-file <path>      Write logs to file
   --commands-per-pattern <json>  Override pattern commands
 `)

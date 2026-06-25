@@ -159,6 +159,9 @@ func parseFlags(args []string) (command string, flags map[string]interface{}, ex
 		case arg == "--no-dotfiles":
 			flags["no-dotfiles"] = true
 
+		case arg == "--notify":
+			flags["notify"] = true
+
 		case arg == "--help" || arg == "-h":
 			flags["help"] = true
 			return "help", flags, nil

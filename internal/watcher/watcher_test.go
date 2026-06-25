@@ -19,6 +19,7 @@ type mockConfig struct {
 	postClearCommands  []string
 	commandsPerPattern map[string]string
 	drupalRoot         *string
+	notify             bool
 }
 
 func (m mockConfig) GetRoutes() []string                  { return m.routes }
@@ -31,6 +32,7 @@ func (m mockConfig) GetDrushArgs() []string                { return m.drushArgs 
 func (m mockConfig) GetPostClearCommands() []string        { return m.postClearCommands }
 func (m mockConfig) GetCommandsPerPattern() map[string]string { return m.commandsPerPattern }
 func (m mockConfig) GetDrupalRoot() *string                 { return m.drupalRoot }
+func (m mockConfig) GetNotify() bool                        { return m.notify }
 
 func TestWatcherStartStop(t *testing.T) {
 	tmp := t.TempDir()

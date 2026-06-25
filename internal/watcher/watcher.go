@@ -27,6 +27,7 @@ type Config interface {
 	GetPostClearCommands() []string
 	GetCommandsPerPattern() map[string]string
 	GetDrupalRoot() *string
+	GetNotify() bool
 }
 
 type Stats struct {
