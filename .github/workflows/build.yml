@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,3 +32,22 @@ jobs:
           name: drupal-watcher-linux-amd64
           path: drupal-watcher-linux-amd64
           compression-level: 0
+
+      - name: Get version
+        id: version
+        run: |
+          BASE=$(jq -r '.extra["drupal-watcher-version"] // "v1.0.0"' composer.json)
+          echo "tag=${BASE}.${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Compress for release
+        run: gzip -c drupal-watcher-linux-amd64 > drupal-watcher-linux-amd64.gz
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: drupal-watcher ${{ steps.version.outputs.tag }}
+          files: |
+            drupal-watcher-linux-amd64.gz
+          fail_on_unmatched_files: true
+          generate_release_notes: true
