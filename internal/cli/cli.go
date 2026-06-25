@@ -19,6 +19,7 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/tui"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"github.com/pterm/pterm"
 )
 
 var Version = "0.1.0" // overridden via ldflags at build time
@@ -39,19 +40,23 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	// Check PID
 	pidStatus, err := config.CheckPid(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to check PID: %v\n", utils.P_WARN, err)
+		pterm.Warning.Printfln("Failed to check PID: %v", err)
 	}
 	if pidStatus == "stale" {
 		config.RemovePid(root)
 	} else if pidStatus != nil {
-		fmt.Printf("%s Already running (PID %s). Use %s to stop first.\n",
-			utils.P_WARN, utils.Cyan(fmt.Sprintf("%v", pidStatus)), utils.Green("drupal-watcher reset"))
+		pterm.Warning.Printfln("Already running (PID %s). Use %s to stop first.",
+			utils.Cyan(fmt.Sprintf("%v", pidStatus)), utils.Green("drupal-watcher reset"))
 		return nil
 	}
 
 	// Drush health check
-	if !drush.HealthCheck(cfg) {
-		fmt.Printf("%s Drush is not available. Starting without health check.\n", utils.P_WARN)
+	spinner, _ := pterm.DefaultSpinner.Start("Checking drush health...")
+	ok := drush.HealthCheck(cfg)
+	if ok {
+		spinner.Success("Drush is available")
+	} else {
+		spinner.Warning("Drush is not available. Starting without health check.")
 	}
 
 	// Write PID
@@ -65,10 +70,10 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	if lf, ok := flags["log-file"].(string); ok && lf != "" {
 		f, err := os.OpenFile(lf, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s Failed to open log file: %v\n", utils.P_WARN, err)
+			pterm.Warning.Printfln("Failed to open log file: %v", err)
 		} else {
 			logFile = f
-			fmt.Printf("%s Logging to %s\n", utils.Timestamp(), utils.Cyan(lf))
+			pterm.Info.Printfln("Logging to %s", utils.Cyan(lf))
 		}
 	}
 	if logFile != nil {
@@ -98,62 +103,62 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		// --site flag: load only specified sites from sites.yml
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
-			return fmt.Errorf("%s %v", utils.P_ERROR, err)
+			return fmt.Errorf("%v", err)
 		}
 		filtered := drush.FilterSites(allSites, include, nil)
 		if len(filtered) == 0 {
-			return fmt.Errorf("%s No matching sites found in drush/sites.yml", utils.P_ERROR)
+			return fmt.Errorf("no matching sites found in drush/sites.yml")
 		}
 		var siteList []watcher.SiteInfo
 		for _, s := range filtered {
 			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
-		fmt.Printf("%s Watching sites: %s\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
+		pterm.Info.Printfln("Watching sites: %s", utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if exclude, ok := flags["exclude-site"].([]string); ok && len(exclude) > 0 {
 		// --exclude-site: load all from sites.yml, exclude some
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
-			return fmt.Errorf("%s %v", utils.P_ERROR, err)
+			return fmt.Errorf("%v", err)
 		}
 		filtered := drush.FilterSites(allSites, nil, exclude)
 		if len(filtered) == 0 {
-			return fmt.Errorf("%s All sites excluded. Nothing to watch.", utils.P_ERROR)
+			return fmt.Errorf("all sites excluded. Nothing to watch.")
 		}
 		var siteList []watcher.SiteInfo
 		for _, s := range filtered {
 			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
-		fmt.Printf("%s Watching sites: %s\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
+		pterm.Info.Printfln("Watching sites: %s", utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if len(cfg.Sites) > 0 {
 		// Persisted sites from config file
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
-			return fmt.Errorf("%s %v", utils.P_ERROR, err)
+			return fmt.Errorf("%v", err)
 		}
 		filtered := drush.FilterSites(allSites, cfg.Sites, nil)
 		if len(filtered) == 0 {
-			return fmt.Errorf("%s No matching sites in drush/sites.yml for config sites", utils.P_ERROR)
+			return fmt.Errorf("no matching sites in drush/sites.yml for config sites")
 		}
 		var siteList []watcher.SiteInfo
 		for _, s := range filtered {
 			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
-		fmt.Printf("%s Watching sites: %s (from config)\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
+		pterm.Info.Printfln("Watching sites: %s (from config)", utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if drush.HasMultiSite(drupalRoot) {
 		// Multi-site detected, try to load sites.yml
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
-			return fmt.Errorf("%s Multi-site detected in sites/. Failed to load site aliases: %v.\n  Create drush/sites.yml or drush/sites/*.site.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", utils.P_ERROR, err)
+			return fmt.Errorf("multi-site detected: %v.\n  Create drush/sites.yml or drush/sites/*.site.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", err)
 		}
 		var siteList []watcher.SiteInfo
 		for _, s := range allSites {
 			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
-		fmt.Printf("%s Watching all %d sites: %s\n", utils.P_INFO, len(siteList), utils.Cyan(drush.PrintSiteList(allSites)))
+		pterm.Info.Printfln("Watching all %d sites: %s", len(siteList), utils.Cyan(drush.PrintSiteList(allSites)))
 	}
 
 	// Add per-site routes for site-specific modules/themes
@@ -177,10 +182,9 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 
 	// Show startup info
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
-	fmt.Printf("  Routes: %s\n", utils.Cyan(strings.Join(cfg.Routes, ", ")))
-	fmt.Printf("  Patterns: %s\n", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
-	fmt.Printf("%s Watcher started. PID %d.\n",
-		utils.Timestamp(), os.Getpid())
+	pterm.Info.Printfln("Routes: %s", utils.Cyan(strings.Join(cfg.Routes, ", ")))
+	pterm.Info.Printfln("Patterns: %s", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
+	pterm.Success.Printfln("Watcher started. PID %d.", os.Getpid())
 
 	// Try TUI, fall back to interactive stdin if no TTY
 	isTUI := true
@@ -194,11 +198,11 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 
 		p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen(), tea.WithMouseCellMotion())
 		if _, err := p.Run(); err != nil {
-			fmt.Printf("%s TUI error: %v\n", utils.P_WARN, err)
+			pterm.Warning.Printfln("TUI error: %v", err)
 		}
 	} else {
 		if !isTUI {
-			fmt.Printf("  %s TUI disabled. Type %s for commands.\n", utils.Timestamp(), utils.Green("help"))
+			pterm.Info.Println("TUI disabled. Type help for commands.")
 		}
 		cmdCh := make(chan string)
 		go stdinReader(ctx, cmdCh)
@@ -210,7 +214,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		for !stopped {
 			select {
 			case sig := <-sigCh:
-				fmt.Printf("\n%s Received %s, stopping...\n", utils.Timestamp(), utils.Red(sig.String()))
+				pterm.Warning.Printfln("Received %s, stopping...", utils.Red(sig.String()))
 				stopped = true
 
 			case <-h.StopCh:
@@ -238,7 +242,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 					}
 					route := sanitizeRoute(parts[1])
 					if route == "" {
-						fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
+						pterm.Warning.Println("  Invalid route.")
 						break
 					}
 					pattern := ""
@@ -250,9 +254,9 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 						cfg.Patterns = append(cfg.Patterns, pattern)
 					}
 					if err := mgr.SaveConfig(cfg, root); err != nil {
-						fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
+						pterm.Error.Printfln("  Failed to save config: %v", err)
 					} else {
-						fmt.Printf("  %s Added route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+						pterm.Success.Printfln("  Added route: %s", utils.Cyan(route))
 						h = restartWatcher(h, cfg, logFile)
 					}
 				case "remove", "rm":
@@ -262,7 +266,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 					}
 					route := sanitizeRoute(parts[1])
 					if route == "" {
-						fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
+						pterm.Warning.Println("  Invalid route.")
 						break
 					}
 					newRoutes := make([]string, 0, len(cfg.Routes))
@@ -272,24 +276,24 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 						}
 					}
 					if len(newRoutes) == len(cfg.Routes) {
-						fmt.Printf("  %s Route not found: %s\n", utils.P_WARN, utils.Cyan(route))
+						pterm.Warning.Printfln("  Route not found: %s", utils.Cyan(route))
 					} else {
 						cfg.Routes = newRoutes
 						if err := mgr.SaveConfig(cfg, root); err != nil {
-							fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
+							pterm.Error.Printfln("  Failed to save config: %v", err)
 						} else {
-							fmt.Printf("  %s Removed route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+							pterm.Success.Printfln("  Removed route: %s", utils.Cyan(route))
 							h = restartWatcher(h, cfg, logFile)
 						}
 					}
 				case "reload":
 					newCfg, err := mgr.LoadConfig(root)
 					if err != nil {
-						fmt.Printf("  %s Failed to reload config: %v\n", utils.P_ERROR, err)
+						pterm.Error.Printfln("  Failed to reload config: %v", err)
 					} else {
 						cfg = newCfg
 						h = restartWatcher(h, cfg, logFile)
-						fmt.Printf("  %s Config reloaded.\n", utils.P_SUCCESS)
+						pterm.Success.Println("  Config reloaded.")
 					}
 				case "stop", "quit", "exit":
 					fmt.Println("  Stopping watcher...")
@@ -312,12 +316,11 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	changes := h.Stats.Changes.Load()
 	clears := h.Stats.Clears.Load()
 
-	statusIcon := utils.P_SUCCESS
 	if changes > 0 && clears == 0 {
-		statusIcon = utils.P_WARN
+		pterm.Warning.Printfln("Watcher stopped. %d changes, %d clears, uptime %v", changes, clears, utils.FormatDuration(uptime))
+	} else {
+		pterm.Success.Printfln("Watcher stopped. %d changes, %d clears, uptime %v", changes, clears, utils.FormatDuration(uptime))
 	}
-	fmt.Printf("\n%s Watcher stopped. %d changes, %d clears, uptime %v\n",
-		statusIcon, changes, clears, utils.FormatDuration(uptime))
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 	return nil
 }
@@ -387,49 +390,38 @@ func CmdMonitor(root string, mgr *config.Manager) error {
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
 
-	done := make(chan struct{}, 1)
+	area, err := pterm.DefaultArea.Start(monitorContent(root, mgr))
+	if err != nil {
+		return fmt.Errorf("failed to start monitor: %w", err)
+	}
 
-	// Print initial status, then refresh every 1s
-	printMonitorStatus(root, mgr)
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Print("\033[5A\033[J")
-			printMonitorStatus(root, mgr)
+			area.Update(monitorContent(root, mgr))
 		case <-sigCh:
-			fmt.Print("\033[5A\033[J")
-			printMonitorStatus(root, mgr)
+			area.Stop()
 			fmt.Println("  Monitoring stopped.")
-			close(done)
-			return nil
-		case <-done:
 			return nil
 		}
 	}
 }
 
-func printMonitorStatus(root string, mgr *config.Manager) {
+func monitorContent(root string, mgr *config.Manager) string {
 	pidStatus, err := config.CheckPid(root)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
-		return
+		return pterm.Error.Sprintf("%v", err)
 	}
 
 	if pidStatus == nil {
-		fmt.Printf("%s Drupal Watcher is not running.\n", utils.Yellow("●"))
-		fmt.Println()
-		fmt.Println("  Press Ctrl+C to stop monitoring.")
-		return
+		return fmt.Sprintf("%s Drupal Watcher is not running.\n\n  Press Ctrl+C to stop monitoring.", utils.Yellow("●"))
 	}
 
 	if pidStatus == "stale" {
-		fmt.Printf("%s Drupal Watcher is stopped (stale PID).\n", utils.Red("●"))
-		fmt.Println()
-		fmt.Println("  Press Ctrl+C to stop monitoring.")
-		return
+		return fmt.Sprintf("%s Drupal Watcher is stopped (stale PID).\n\n  Press Ctrl+C to stop monitoring.", utils.Red("●"))
 	}
 
 	pidStr := fmt.Sprintf("%v", pidStatus)
@@ -440,16 +432,13 @@ func printMonitorStatus(root string, mgr *config.Manager) {
 
 	if running && starttime > 0 {
 		uptime := time.Since(time.UnixMilli(starttime))
-		fmt.Printf("%s Drupal Watcher is running (PID %s, uptime %v).\n",
-			utils.Green("●"), utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
+		text := fmt.Sprintf("Drupal Watcher is running (PID %s, uptime %s).", utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
+		return fmt.Sprintf("%s %s\n\n  Press Ctrl+C to stop monitoring.", utils.Green("●"), text)
 	} else if running {
-		fmt.Printf("%s Drupal Watcher is running (PID %s).\n",
-			utils.Green("●"), utils.Cyan(pidStr))
-	} else {
-		fmt.Printf("%s Drupal Watcher is stopped (stale PID).\n", utils.Red("●"))
+		text := fmt.Sprintf("Drupal Watcher is running (PID %s).", utils.Cyan(pidStr))
+		return fmt.Sprintf("%s %s\n\n  Press Ctrl+C to stop monitoring.", utils.Green("●"), text)
 	}
-	fmt.Println()
-	fmt.Println("  Press Ctrl+C to stop monitoring.")
+	return fmt.Sprintf("%s Drupal Watcher is stopped (stale PID).\n\n  Press Ctrl+C to stop monitoring.", utils.Red("●"))
 }
 
 func CmdStatus(root string, mgr *config.Manager) error {
@@ -477,12 +466,12 @@ func CmdStatus(root string, mgr *config.Manager) error {
 
 	if running && starttime > 0 {
 		uptime := time.Since(time.UnixMilli(starttime))
-		fmt.Printf("%s Drupal Watcher is running (PID %s, uptime %v).\n",
-			utils.Green("●"), utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
+		text := fmt.Sprintf("Drupal Watcher is running (PID %s, uptime %s).", utils.Cyan(pidStr), utils.Green(utils.FormatDuration(uptime)))
+		fmt.Printf("%s %s\n", utils.Green("●"), text)
 		fmt.Printf("  Memory: %s\n", utils.Cyan("see 'stats' at runtime"))
 	} else if running {
-		fmt.Printf("%s Drupal Watcher is running (PID %s).\n",
-			utils.Green("●"), utils.Cyan(pidStr))
+		text := fmt.Sprintf("Drupal Watcher is running (PID %s).", utils.Cyan(pidStr))
+		fmt.Printf("%s %s\n", utils.Green("●"), text)
 	} else {
 		fmt.Printf("%s Drupal Watcher is stopped (stale PID). Run %s to clean up.\n",
 			utils.Red("●"), utils.Green("drupal-watcher reset"))
@@ -501,16 +490,16 @@ func CmdAdd(root string, args []string, mgr *config.Manager) error {
 		parts := strings.SplitN(arg, ":", 2)
 		route := sanitizeRoute(parts[0])
 		if route == "" {
-			fmt.Printf("  %s Invalid route: %s\n", utils.P_WARN, parts[0])
+			pterm.Warning.Printfln("  Invalid route: %s", parts[0])
 			continue
 		}
 		cfg.Routes = append(cfg.Routes, route)
-		fmt.Printf("%s Added route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+		pterm.Success.Printfln("Added route: %s", utils.Cyan(route))
 
 		if len(parts) > 1 {
 			pattern := parts[1]
 			cfg.Patterns = append(cfg.Patterns, pattern)
-			fmt.Printf("%s Added pattern: %s\n", utils.P_SUCCESS, utils.Cyan(pattern))
+			pterm.Success.Printfln("Added pattern: %s", utils.Cyan(pattern))
 		}
 	}
 
@@ -533,7 +522,7 @@ func CmdRemove(root string, args []string, mgr *config.Manager) error {
 		parts := strings.SplitN(arg, ":", 2)
 		route := sanitizeRoute(parts[0])
 		if route == "" {
-			fmt.Printf("  %s Invalid route: %s\n", utils.P_WARN, parts[0])
+			pterm.Warning.Printfln("  Invalid route: %s", parts[0])
 			continue
 		}
 
@@ -566,10 +555,10 @@ func CmdRemove(root string, args []string, mgr *config.Manager) error {
 	}
 
 	if removedRoutes > 0 {
-		fmt.Printf("%s Removed %d route(s)\n", utils.P_SUCCESS, removedRoutes)
+		pterm.Success.Printfln("Removed %d route(s)", removedRoutes)
 	}
 	if removedPatterns > 0 {
-		fmt.Printf("%s Removed %d pattern(s)\n", utils.P_SUCCESS, removedPatterns)
+		pterm.Success.Printfln("Removed %d pattern(s)", removedPatterns)
 	}
 
 	if err := mgr.SaveConfig(cfg, root); err != nil {
@@ -585,6 +574,7 @@ func CmdReset(root string, mgr *config.Manager) error {
 	}
 
 	if pidStatus != nil { // PID exists (running or stale)
+		spinner, _ := pterm.DefaultSpinner.Start("Stopping watcher...")
 		pidStr := fmt.Sprintf("%v", pidStatus)
 		var pid int
 		fmt.Sscanf(pidStr, "%d", &pid)
@@ -598,11 +588,12 @@ func CmdReset(root string, mgr *config.Manager) error {
 				time.Sleep(500 * time.Millisecond)
 			}
 		}
+		spinner.Success("Watcher stopped")
 	}
 
 	config.RemovePid(root)
 	mgr.InvalidateConfigCache(root)
-	fmt.Printf("%s Reset complete. PID and config cache cleared.\n", utils.P_SUCCESS)
+	pterm.Success.Println("Reset complete. PID and config cache cleared.")
 	return nil
 }
 
@@ -662,14 +653,16 @@ Options:
 }
 
 func restartWatcher(h *watcher.Handle, cfg config.Config, logFile *os.File) *watcher.Handle {
+	spinner, _ := pterm.DefaultSpinner.Start("Restarting watcher...")
 	watcher.Stop(h)
 	time.Sleep(200 * time.Millisecond)
 	newH, err := watcher.Start(cfg, logFile)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s Failed to restart watcher: %v\n", utils.P_ERROR, err)
+		spinner.Fail("Failed to restart watcher")
+		pterm.Error.Printfln("%v", err)
 		return h
 	}
-	fmt.Printf("  %s Watcher restarted.\n", utils.P_SUCCESS)
+	spinner.Success("Watcher restarted")
 	return newH
 }
 
@@ -683,8 +676,8 @@ func isatty() bool {
 
 func printInteractiveStatus(h *watcher.Handle) {
 	uptime := time.Since(h.Stats.StartTime)
-	fmt.Printf("  %s Watcher running. PID %d\n", utils.Green("●"), os.Getpid())
-	fmt.Printf("  Changes: %d  Clears: %d  Uptime: %v\n",
+	pterm.Success.Printfln("Watcher running. PID %d", os.Getpid())
+	pterm.Info.Printfln("Changes: %d  Clears: %d  Uptime: %v",
 		h.Stats.Changes.Load(), h.Stats.Clears.Load(), utils.FormatDuration(uptime))
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 }

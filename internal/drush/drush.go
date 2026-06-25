@@ -1,7 +1,6 @@
 package drush
 
 import (
-	"bufio"
 	"bytes"
 	"fmt"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/pterm/pterm"
 )
 
 var isWSL = sync.OnceValue(func() bool {
@@ -105,11 +105,8 @@ func GetSpawnArgs(cfg DrushConfig) (string, []string) {
 func HealthCheck(cfg DrushConfig) bool {
 	cmd := GetCmd(cfg)
 	statusArgs := []string{cmd, "--version"}
-	start := time.Now()
 
-	out, err := exec.Command(statusArgs[0], statusArgs[1:]...).CombinedOutput()
-	elapsed := time.Since(start)
-	utils.PrintDrushHealthResult(utils.DrushHealth{Ok: err == nil, Duration: elapsed, Output: string(out)})
+	_, err := exec.Command(statusArgs[0], statusArgs[1:]...).CombinedOutput()
 	return err == nil
 }
 
@@ -202,7 +199,7 @@ func RunPostClearCommands(commands []string) {
 		if cmdStr == "" {
 			continue
 		}
-		fmt.Printf("%s Running post-clear command: %s\n", utils.Timestamp(), utils.Dim(cmdStr))
+		pterm.Info.Printfln("Running post-clear command: %s", utils.Dim(cmdStr))
 
 		var cmd *exec.Cmd
 		if runtime.GOOS == "windows" {
@@ -214,7 +211,7 @@ func RunPostClearCommands(commands []string) {
 		cmd.Stderr = os.Stderr
 
 		if err := cmd.Run(); err != nil {
-			fmt.Printf("%s Post-clear command failed: %v\n", utils.P_WARN, err)
+			pterm.Warning.Printfln("Post-clear command failed: %v", err)
 		}
 	}
 }
@@ -255,11 +252,6 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($tmpl)
 }
 
 func PromptConfirm(prompt string) bool {
-	fmt.Print(prompt)
-	scanner := bufio.NewScanner(os.Stdin)
-	if scanner.Scan() {
-		answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
-		return answer == "y" || answer == "yes"
-	}
-	return false
+	result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).WithDefaultText(prompt).Show()
+	return result
 }

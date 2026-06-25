@@ -3,67 +3,30 @@ package utils
 import (
 	"fmt"
 	"runtime"
-	"strings"
 	"time"
+
+	"github.com/pterm/pterm"
 )
 
-var colorsEnabled = true
-
-func SetColorsEnabled(v bool) { colorsEnabled = v }
-func ColorsEnabled() bool     { return colorsEnabled }
-
-const (
-	RED    = "\x1b[31m"
-	GREEN  = "\x1b[32m"
-	YELLOW = "\x1b[33m"
-	BLUE   = "\x1b[34m"
-	CYAN   = "\x1b[36m"
-	NC     = "\x1b[0m"
-	BOLD   = "\x1b[1m"
-	DIM    = "\x1b[2m"
-)
-
-func c(code, s string) string {
-	if colorsEnabled {
-		return code + s + NC
+func SetColorsEnabled(v bool) {
+	if v {
+		pterm.EnableColor()
+	} else {
+		pterm.DisableColor()
 	}
-	return s
 }
 
-func Red(s string) string    { return c(RED, s) }
-func Green(s string) string  { return c(GREEN, s) }
-func Yellow(s string) string { return c(YELLOW, s) }
-func Blue(s string) string   { return c(BLUE, s) }
-func Cyan(s string) string   { return c(CYAN, s) }
-func Bold(s string) string {
-	if colorsEnabled {
-		return BOLD + s + NC
-	}
-	return s
-}
+func ColorsEnabled() bool { return pterm.PrintColor }
+
+func Red(s string) string    { return pterm.FgRed.Sprint(s) }
+func Green(s string) string  { return pterm.FgGreen.Sprint(s) }
+func Yellow(s string) string { return pterm.FgYellow.Sprint(s) }
+func Blue(s string) string   { return pterm.FgBlue.Sprint(s) }
+func Cyan(s string) string   { return pterm.FgCyan.Sprint(s) }
+func Bold(s string) string   { return pterm.Bold.Sprint(s) }
+
 func Dim(s string) string {
-	if colorsEnabled {
-		return DIM + s + NC
-	}
-	return s
-}
-
-var (
-	P_ERROR   = "✖"
-	P_WARN    = "⚠"
-	P_INFO    = "ℹ"
-	P_SUCCESS = "✔"
-)
-
-func P(colored string) string {
-	return c(strings.Replace(colored, "\x1b", "", -1), colored)
-}
-
-func init() {
-	P_ERROR = c("\x1b[31m", "✖")
-	P_WARN = c("\x1b[33m", "⚠")
-	P_INFO = c("\x1b[34m", "ℹ")
-	P_SUCCESS = c("\x1b[32m", "✔")
+	return pterm.FgGray.Sprint(s)
 }
 
 func Timestamp() string {
@@ -82,39 +45,26 @@ var DefaultPatterns = []string{
 }
 
 func PrintHeader(title string) {
-	fmt.Println(Yellow(title))
+	pterm.DefaultSection.Println(title)
 }
 
 type SectionItem interface{}
 
 func PrintSection(heading string, items []SectionItem) {
-	fmt.Printf("\n%s:\n", Blue(heading))
+	pterm.DefaultSection.Println(heading)
+	var data pterm.TableData
 	for _, item := range items {
 		switch v := item.(type) {
 		case [2]string:
-			fmt.Printf("  %s  %s\n", Green(v[0]), v[1])
+			data = append(data, []string{v[0], v[1]})
 		case string:
-			fmt.Printf("  %s\n", v)
+			data = append(data, []string{"", v})
 		default:
-			fmt.Printf("  %v\n", v)
+			data = append(data, []string{"", fmt.Sprintf("%v", v)})
 		}
 	}
-}
-
-type DrushHealth struct {
-	Ok       bool
-	Duration time.Duration
-	Output   string
-}
-
-func PrintDrushHealthResult(h DrushHealth) {
-	status := P_SUCCESS
-	if !h.Ok {
-		status = P_ERROR
-	}
-	fmt.Printf("%s Drush health check: %s (%v)\n", Timestamp(), status, h.Duration)
-	if !h.Ok && h.Output != "" {
-		fmt.Printf("  %s\n", Dim(strings.TrimSpace(h.Output)))
+	if len(data) > 0 {
+		pterm.DefaultTable.WithHasHeader().WithData(data).Render()
 	}
 }
 
@@ -150,12 +100,12 @@ func GetMemStats(watchCount int64) MemStats {
 }
 
 func PrintMemStats(s MemStats) {
-	memColor := GREEN
+	memColor := pterm.FgGreen
 	if s.AllocMB >= 500 {
-		memColor = RED
+		memColor = pterm.FgRed
 	} else if s.AllocMB >= 100 {
-		memColor = YELLOW
+		memColor = pterm.FgYellow
 	}
-	fmt.Printf("  Memory: %s  |  Kernel watches: %d\n",
-		c(memColor, fmt.Sprintf("%.1f MB", s.AllocMB)), s.WatchCount)
+	pterm.Info.Printfln("Memory: %s  |  Kernel watches: %d",
+		memColor.Sprintf("%.1f MB", s.AllocMB), s.WatchCount)
 }

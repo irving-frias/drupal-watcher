@@ -12,6 +12,7 @@ import (
 
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"github.com/pterm/pterm"
 )
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -186,14 +187,14 @@ func (m *Manager) LoadConfig(root string) (Config, error) {
 		if werr := os.WriteFile(cp, b, 0644); werr != nil {
 			return def, fmt.Errorf("failed to create config: %w", werr)
 		}
-		fmt.Printf("%s Created %s with defaults.\n", utils.P_INFO, utils.Cyan("watcher.config.json"))
+		pterm.Info.Printfln("Created %s with defaults.", utils.Cyan("watcher.config.json"))
 		m.cache[r] = &cacheEntry{Config: &def}
 		return def, nil
 	}
 
 	var parsed Config
 	if err := json.Unmarshal(data, &parsed); err != nil {
-		fmt.Printf("%s Failed to read %s. Using defaults.\n", utils.P_ERROR, utils.Cyan("watcher.config.json"))
+		pterm.Error.Printfln("Failed to read %s. Using defaults.", utils.Cyan("watcher.config.json"))
 		def := m.GetDefaultConfig(r)
 		m.cache[r] = &cacheEntry{Config: &def}
 		return def, nil
@@ -303,13 +304,13 @@ func migrateCommands(cmds map[string]string) map[string]string {
 	for pattern, cmd := range cmds {
 		if replacement, ok := commandMigrations[cmd]; ok && replacement != cmd {
 			cmds[pattern] = replacement
-			fmt.Printf("%s  %s → %s\n", utils.P_INFO, cmd, replacement)
+			pterm.Info.Printfln("  %s → %s", cmd, replacement)
 			migrated = true
 		}
 	}
 	if migrated {
-		fmt.Printf("%s Auto-migrated outdated CommandsPerPattern.\n", utils.P_INFO)
-		fmt.Printf("%s Delete %s for fresh defaults.\n", utils.P_INFO, utils.Cyan("watcher.config.json"))
+		pterm.Info.Println("Auto-migrated outdated CommandsPerPattern.")
+		pterm.Info.Printfln("Delete %s for fresh defaults.", utils.Cyan("watcher.config.json"))
 	}
 	return cmds
 }
@@ -349,7 +350,7 @@ func RemovePid(root string) error {
 	_ = os.WriteFile(pidPath(root), []byte(""), 0644)
 	err := os.Remove(pidPath(root))
 	if err != nil && !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "%s Failed to remove PID file: %v\n", utils.P_WARN, err)
+		pterm.Warning.Printfln("Failed to remove PID file: %v", err)
 	}
 	_ = RemoveStarttime(root)
 	return nil

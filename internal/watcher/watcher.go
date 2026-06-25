@@ -14,6 +14,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/irving-frias/drupal-watcher/internal/drush"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/pterm/pterm"
 )
 
 type SiteInfo struct {
@@ -131,7 +132,7 @@ func start(cfg Config, logFile *os.File, eventCh chan EventMsg) (*Handle, error)
 	watchDirs := gatherDirs(routes, skipDirs)
 	for _, dir := range watchDirs {
 		if err := fsnWatcher.Add(dir); err != nil {
-			fmt.Printf("%s Failed to watch %s: %v\n", utils.P_WARN, utils.Cyan(dir), err)
+			pterm.Warning.Printfln("Failed to watch %s: %v", utils.Cyan(dir), err)
 		}
 	}
 
@@ -147,8 +148,8 @@ func start(cfg Config, logFile *os.File, eventCh chan EventMsg) (*Handle, error)
 	debounce := time.Duration(debounceMs) * time.Millisecond
 
 	h.WatchCount.Store(int64(watchCount))
-	fmt.Printf("%s Watching %d directories (%d kernel watches), debounce %v, %d patterns\n",
-		utils.Timestamp(), len(routes), watchCount, debounce, len(patterns))
+	pterm.Info.Printfln("Watching %d directories (%d kernel watches), debounce %v, %d patterns",
+		len(routes), watchCount, debounce, len(patterns))
 
 	var timer *time.Timer
 	var debounceMu sync.Mutex
@@ -208,7 +209,7 @@ func start(cfg Config, logFile *os.File, eventCh chan EventMsg) (*Handle, error)
 				if !ok {
 					return
 				}
-				fmt.Printf("%s Watcher error: %v\n", utils.P_WARN, err)
+				pterm.Warning.Printfln("Watcher error: %v", err)
 			}
 		}
 	}()
@@ -314,7 +315,7 @@ func processChange(h *Handle) {
 		msg = fmt.Sprintf("%d changes detected (last: %s)", changes, utils.Dim(dispFile))
 	}
 	if !isTUI {
-		fmt.Printf("%s %s\n", utils.Timestamp(), msg)
+		pterm.Info.Println(msg)
 	} else {
 		select {
 		case h.EventCh <- EventMsg{
@@ -367,17 +368,17 @@ func emitDrushResult(h *Handle, result drush.DrushResult, cmdStr string, changes
 	}
 
 	if !isTUI {
-		status := utils.P_SUCCESS
+		msg := fmt.Sprintf("drush %s%s (%v, exit %d)", cmdStr, tag, result.Duration, result.ExitCode)
 		if result.ExitCode != 0 {
-			status = utils.P_ERROR
+			pterm.Error.Println(msg)
+		} else {
+			pterm.Success.Println(msg)
 		}
-		fmt.Printf("%s %s drush %s%s (%v, exit %d)\n",
-			utils.Timestamp(), status, cmdStr, tag, result.Duration, result.ExitCode)
 		if result.Stderr != "" {
-			fmt.Fprintf(os.Stderr, "  %s\n", utils.Dim(strings.TrimSpace(result.Stderr)))
+			pterm.Warning.Printfln("  %s", utils.Dim(strings.TrimSpace(result.Stderr)))
 		}
 		if result.Stdout != "" && result.Stdout != "{}" {
-			fmt.Printf("  %s\n", utils.Dim(strings.TrimSpace(result.Stdout)))
+			pterm.Info.Printfln("  %s", utils.Dim(strings.TrimSpace(result.Stdout)))
 		}
 	} else {
 		select {

@@ -10,14 +10,14 @@ import (
 
 	"github.com/irving-frias/drupal-watcher/internal/cli"
 	"github.com/irving-frias/drupal-watcher/internal/config"
-	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/pterm/pterm"
 )
 
 func main() {
 	// Handle panic gracefully
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintf(os.Stderr, "%s Panic: %v\n", utils.P_ERROR, r)
+			pterm.Error.Printfln("Panic: %v", r)
 			os.Exit(1)
 		}
 	}()
@@ -44,7 +44,7 @@ func main() {
 			root = extraArgs[0]
 		}
 		if err := cli.CmdStart(context.Background(), root, flags, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -54,7 +54,7 @@ func main() {
 			root = extraArgs[0]
 		}
 		if err := cli.CmdReset(root, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -64,7 +64,7 @@ func main() {
 			root = extraArgs[0]
 		}
 		if err := cli.CmdRestart(root, flags, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -74,7 +74,7 @@ func main() {
 			root = extraArgs[0]
 		}
 		if err := cli.CmdStatus(root, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -84,7 +84,7 @@ func main() {
 			root = extraArgs[0]
 		}
 		if err := cli.CmdMonitor(root, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -94,7 +94,7 @@ func main() {
 			root = extraArgs[0]
 		}
 		if err := cli.CmdList(root, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -106,7 +106,7 @@ func main() {
 			routeArgs = extraArgs[1:]
 		}
 		if err := cli.CmdAdd(root, routeArgs, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
@@ -118,14 +118,14 @@ func main() {
 			routeArgs = extraArgs[1:]
 		}
 		if err := cli.CmdRemove(root, routeArgs, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 
 	case "tui":
 		root := getRootFlag(flags, extraArgs)
 		if err := cli.CmdTui(root, mgr); err != nil {
-			fmt.Fprintf(os.Stderr, "%s %v\n", utils.P_ERROR, err)
+			pterm.Error.Printfln("%v", err)
 			os.Exit(1)
 		}
 

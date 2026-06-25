@@ -11,6 +11,7 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/cli"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/pterm/pterm"
 )
 
 func TestPkgVersion(t *testing.T) {
@@ -51,6 +52,7 @@ func captureStdout(f func()) string {
 	old := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
+	pterm.SetDefaultOutput(w)
 
 	f()
 
@@ -58,6 +60,7 @@ func captureStdout(f func()) string {
 	var buf bytes.Buffer
 	buf.ReadFrom(r)
 	os.Stdout = old
+	pterm.SetDefaultOutput(old)
 	return buf.String()
 }
 
