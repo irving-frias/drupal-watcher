@@ -95,16 +95,16 @@ Sends a native OS desktop notification each time a cache clear completes:
 vendor/bin/drupal-watcher start --notify
 ```
 
-**Per-SO:**
+**Per OS:**
 
-| SO | Método | Requisitos |
+| OS | Method | Requirements |
 |---|---|---|
-| **macOS** | `osascript` | Ninguno (built-in) |
-| **Linux** (nativo) | `notify-send` | `libnotify-bin` (Debian/Ubuntu) o `libnotify` (Fedora/Arch) |
-| **WSL** | `powershell.exe` → Toast de Windows | Ninguno (llama al PowerShell del host) |
-| **Windows** | `powershell` → ToastNotificationManager | Ninguno (built-in) |
+| **macOS** | `osascript` | None (built-in) |
+| **Linux** (native) | `notify-send` | `libnotify-bin` (Debian/Ubuntu) or `libnotify` (Fedora/Arch) |
+| **WSL** | `powershell.exe` → Windows Toast | None (calls host PowerShell) |
+| **Windows** | `powershell` → ToastNotificationManager | None (built-in) |
 
-En WSL se detecta automáticamente leyendo `/proc/sys/kernel/osrelease` y usa `powershell.exe` para mostrar el Toast nativo de Windows 10/11. No requiere configurar nada.
+WSL is auto-detected by reading `/proc/sys/kernel/osrelease` and uses `powershell.exe` to show the native Windows 10/11 Toast. No configuration required.
 
 ### --root
 

@@ -14,7 +14,7 @@
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
 - `internal/watcher/watcher.go` — fsnotify file watcher, debounce, config-aware cache clear args
 - `internal/cli/cli.go` — All CLI commands (`CmdStart`, `CmdList`, `CmdStatus`, etc.)
-- `internal/utils/utils.go` — Color helpers (ANSI with toggle), prefix constants, shared helpers
+- `internal/utils/utils.go` — Color helpers (pterm-based), shared helpers
 - All config package tests in `internal/config/config_test.go`
 - All cli package tests in `internal/cli/cli_test.go`
 - All drush package tests in `internal/drush/drush_test.go`
@@ -29,7 +29,7 @@
 - Convention: `CmdStart`, `CmdList`, `CmdStatus` etc. for command functions
 - Config satisfies both `watcher.Config` and `drush.DrushConfig` interfaces via method set
 - PID/starttime files stored in project root (`cwd/`) by default, or in `root` if specified
-- **Releases**: antes de cada release, actualizar `composer.json` → `extra.drupal-watcher-version`. El workflow en `build.yml` lee esa versión, crea el tag, y auto-bupea el patch post-release
+- **Releases**: before each release, update `composer.json` → `extra.drupal-watcher-version`. The `build.yml` workflow reads that version, creates the tag, and auto-bumps the patch post-release
 
 ## Key types
 - `config.Config` — Main configuration struct with all watcher settings
@@ -45,5 +45,5 @@
 - Replaced `fs.watch`/`fs.watchFile` with `fsnotify`
 - Replaced `exec`/child_process with `os/exec`
 - PID files use `syscall.Kill(pid, 0)` for process check
-- Colors use ANSI escape codes with global toggle
+- Colors use pterm (replaced raw ANSI escape codes)
 - Interface methods use `Get*` prefix to avoid Go field/method name conflicts
