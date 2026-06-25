@@ -160,7 +160,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	if resolved := cfg.GetResolvedSites(); len(resolved) > 0 && cfg.DrupalRoot != nil {
 		for _, site := range resolved {
 			siteRoot := filepath.Join(*cfg.DrupalRoot, "sites", site.Name)
-			for _, sub := range []string{"modules", "themes", "custom"} {
+			for _, sub := range []string{"modules", "themes", "profiles", "custom"} {
 				dir := filepath.Join(siteRoot, sub)
 				if info, err := os.Stat(dir); err == nil && info.IsDir() {
 					cfg.Routes = append(cfg.Routes, dir)
