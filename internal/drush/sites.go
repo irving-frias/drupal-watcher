@@ -19,31 +19,15 @@ type siteAlias struct {
 	URI  string  `yaml:"uri"`
 }
 
-func LoadSitesYml(drupalRoot string) (map[string]Site, error) {
-	candidates := []string{
-		filepath.Join(drupalRoot, "drush", "sites.yml"),
-		filepath.Join(drupalRoot, "drush", "sites", "sites.yml"),
+func loadSitesFile(path string) (map[string]Site, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
 	}
-
-	var data []byte
-	var path string
-	for _, c := range candidates {
-		b, err := os.ReadFile(c)
-		if err == nil {
-			data = b
-			path = c
-			break
-		}
-	}
-	if data == nil {
-		return nil, fmt.Errorf("drush/sites.yml not found in %s", drupalRoot)
-	}
-
 	var raw map[string]siteAlias
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("failed to parse %s: %w", path, err)
 	}
-
 	sites := make(map[string]Site, len(raw))
 	for name, alias := range raw {
 		if alias.URI == "" {
@@ -51,12 +35,50 @@ func LoadSitesYml(drupalRoot string) (map[string]Site, error) {
 		}
 		sites[name] = Site{Name: name, URI: alias.URI}
 	}
+	return sites, nil
+}
 
+func loadSitesDir(sitesDir string) (map[string]Site, error) {
+	entries, err := os.ReadDir(sitesDir)
+	if err != nil {
+		return nil, err
+	}
+	sites := make(map[string]Site)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".site.yml") {
+			continue
+		}
+		name := strings.TrimSuffix(e.Name(), ".site.yml")
+		path := filepath.Join(sitesDir, e.Name())
+		fileSites, err := loadSitesFile(path)
+		if err != nil {
+			return nil, err
+		}
+		if s, ok := fileSites[name]; ok {
+			sites[name] = s
+		}
+	}
 	if len(sites) == 0 {
-		return nil, fmt.Errorf("no valid sites found in %s", path)
+		return nil, fmt.Errorf("no *.site.yml files found in %s", sitesDir)
+	}
+	return sites, nil
+}
+
+func LoadSitesYml(drupalRoot string) (map[string]Site, error) {
+	// Try single drush/sites.yml first
+	singlePath := filepath.Join(drupalRoot, "drush", "sites.yml")
+	sites, err := loadSitesFile(singlePath)
+	if err == nil {
+		return sites, nil
 	}
 
-	return sites, nil
+	// Try drush/sites/*.site.yml
+	sitesDir := filepath.Join(drupalRoot, "drush", "sites")
+	if sitesDirSites, err := loadSitesDir(sitesDir); err == nil {
+		return sitesDirSites, nil
+	}
+
+	return nil, fmt.Errorf("no site aliases found in %s/drush/sites.yml or %s/drush/sites/*.site.yml", drupalRoot, drupalRoot)
 }
 
 func HasMultiSite(drupalRoot string) bool {

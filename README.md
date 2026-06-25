@@ -288,7 +288,9 @@ The watcher checks for directories under `sites/` beyond `default/` that contain
 
 ### `drush/sites.yml` (required for multi-site)
 
-When multiple sites are detected, you **must** create a `drush/sites.yml` file. This file tells the watcher which site aliases and URIs to use:
+When multiple sites are detected, you **must** configure site aliases. The watcher supports both formats Drush accepts:
+
+### Single file: `drush/sites.yml`
 
 ```yaml
 # docroot/drush/sites.yml
@@ -298,9 +300,25 @@ site2:
   uri: 'https://site2.local'
 ```
 
+### Per-site files: `drush/sites/{name}.site.yml`
+
+```yaml
+# docroot/drush/sites/egade.site.yml
+egade:
+  uri: 'https://egade.local'
+```
+
+```yaml
+# docroot/drush/sites/prepa.site.yml
+prepa:
+  uri: 'https://prepa.local'
+```
+
+The per-site directory format (`drush/sites/*.site.yml`) is discovered automatically. The two formats are mutually exclusive — if `drush/sites.yml` exists, the directory is ignored.
+
 The watcher does not guess URIs from directory names — a site alias can differ from its directory name. See [Drush site aliases docs](https://www.drush.org/latest/using-drush/site-aliases/) for details.
 
-If multi-site is detected and `drush/sites.yml` is missing, the watcher exits with an error and instructions to create the file.
+If multi-site is detected and neither `drush/sites.yml` nor `drush/sites/*.site.yml` exists, the watcher exits with an error and instructions.
 
 ### Filtering sites
 

@@ -146,7 +146,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		// Multi-site detected, try to load sites.yml
 		allSites, err := drush.LoadSitesYml(drupalRoot)
 		if err != nil {
-			return fmt.Errorf("%s Multi-site detected in sites/. Create drush/sites.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", utils.P_ERROR)
+			return fmt.Errorf("%s Multi-site detected in sites/. Create drush/sites.yml or drush/sites/*.site.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", utils.P_ERROR)
 		}
 		var siteList []watcher.SiteInfo
 		for _, s := range allSites {
