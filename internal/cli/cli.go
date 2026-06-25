@@ -159,9 +159,12 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	// Add per-site routes for site-specific modules/themes
 	if resolved := cfg.GetResolvedSites(); len(resolved) > 0 && cfg.DrupalRoot != nil {
 		for _, site := range resolved {
-			for _, sub := range []string{"modules/custom", "themes/custom"} {
-				route := filepath.Join(*cfg.DrupalRoot, "sites", site.Name, sub)
-				cfg.Routes = append(cfg.Routes, route)
+			siteRoot := filepath.Join(*cfg.DrupalRoot, "sites", site.Name)
+			for _, sub := range []string{"modules", "themes", "custom"} {
+				dir := filepath.Join(siteRoot, sub)
+				if info, err := os.Stat(dir); err == nil && info.IsDir() {
+					cfg.Routes = append(cfg.Routes, dir)
+				}
 			}
 		}
 	}
