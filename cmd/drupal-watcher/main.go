@@ -130,6 +130,7 @@ func main() {
 		}
 
 	case "help", "":
+		cli.CmdHelp()
 
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
