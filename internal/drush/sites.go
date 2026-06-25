@@ -64,21 +64,32 @@ func loadSitesDir(sitesDir string) (map[string]Site, error) {
 	return sites, nil
 }
 
-func LoadSitesYml(drupalRoot string) (map[string]Site, error) {
-	// Try single drush/sites.yml first
-	singlePath := filepath.Join(drupalRoot, "drush", "sites.yml")
-	sites, err := loadSitesFile(singlePath)
-	if err == nil {
-		return sites, nil
+func LoadSitesYml(drupalRoot, projectRoot string) (map[string]Site, error) {
+	// Search paths: project root first (common for Composer Drupal), then drupal root
+	bases := []string{projectRoot, drupalRoot}
+	if projectRoot == drupalRoot {
+		bases = []string{drupalRoot}
+	}
+
+	// Try single drush/sites.yml
+	for _, base := range bases {
+		path := filepath.Join(base, "drush", "sites.yml")
+		sites, err := loadSitesFile(path)
+		if err == nil {
+			return sites, nil
+		}
 	}
 
 	// Try drush/sites/*.site.yml
-	sitesDir := filepath.Join(drupalRoot, "drush", "sites")
-	if sitesDirSites, err := loadSitesDir(sitesDir); err == nil {
-		return sitesDirSites, nil
+	for _, base := range bases {
+		dir := filepath.Join(base, "drush", "sites")
+		sites, err := loadSitesDir(dir)
+		if err == nil {
+			return sites, nil
+		}
 	}
 
-	return nil, fmt.Errorf("no site aliases found in %s/drush/sites.yml or %s/drush/sites/*.site.yml", drupalRoot, drupalRoot)
+	return nil, fmt.Errorf("no site aliases found in %s/drush/sites.yml, %s/drush/sites.yml, or drush/sites/*.site.yml in those paths", drupalRoot, projectRoot)
 }
 
 func HasMultiSite(drupalRoot string) bool {

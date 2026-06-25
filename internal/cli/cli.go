@@ -96,7 +96,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		cfg.DrushArgs = append([]string{"--uri=" + uri}, cfg.DrushArgs...)
 	} else if include, ok := flags["site"].([]string); ok && len(include) > 0 {
 		// --site flag: load only specified sites from sites.yml
-		allSites, err := drush.LoadSitesYml(drupalRoot)
+		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%s %v", utils.P_ERROR, err)
 		}
@@ -112,7 +112,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		fmt.Printf("%s Watching sites: %s\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if exclude, ok := flags["exclude-site"].([]string); ok && len(exclude) > 0 {
 		// --exclude-site: load all from sites.yml, exclude some
-		allSites, err := drush.LoadSitesYml(drupalRoot)
+		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%s %v", utils.P_ERROR, err)
 		}
@@ -128,7 +128,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		fmt.Printf("%s Watching sites: %s\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if len(cfg.Sites) > 0 {
 		// Persisted sites from config file
-		allSites, err := drush.LoadSitesYml(drupalRoot)
+		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%s %v", utils.P_ERROR, err)
 		}
@@ -144,7 +144,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		fmt.Printf("%s Watching sites: %s (from config)\n", utils.P_INFO, utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if drush.HasMultiSite(drupalRoot) {
 		// Multi-site detected, try to load sites.yml
-		allSites, err := drush.LoadSitesYml(drupalRoot)
+		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%s Multi-site detected in sites/. Create drush/sites.yml or drush/sites/*.site.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", utils.P_ERROR)
 		}
