@@ -163,6 +163,9 @@ func parseFlags(args []string) (command string, flags map[string]interface{}, ex
 		case arg == "--notify":
 			flags["notify"] = true
 
+		case arg == "--no-tui":
+			flags["no-tui"] = true
+
 		case arg == "--help" || arg == "-h":
 			flags["help"] = true
 			return "help", flags, nil

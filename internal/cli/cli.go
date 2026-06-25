@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -94,112 +95,129 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 	fmt.Printf("  Routes: %s\n", utils.Cyan(strings.Join(cfg.Routes, ", ")))
 	fmt.Printf("  Patterns: %s\n", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
-	fmt.Printf("%s Watcher started. PID %d. Type %s for commands.\n",
-		utils.Timestamp(), os.Getpid(), utils.Green("help"))
+	fmt.Printf("%s Watcher started. PID %d.\n",
+		utils.Timestamp(), os.Getpid())
 
-	// Interactive stdin commands
-	cmdCh := make(chan string)
-	go stdinReader(ctx, cmdCh)
+	// Try TUI, fall back to interactive stdin if no TTY
+	isTUI := true
+	if nt, ok := flags["no-tui"].(bool); ok && nt {
+		isTUI = false
+	}
 
-	// Signal handling
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	if isTUI && isatty() {
+		eventCh := make(chan watcher.EventMsg, 100)
+		h.EventCh = eventCh
 
-	stopped := false
-	for !stopped {
-		select {
-		case sig := <-sigCh:
-			fmt.Printf("\n%s Received %s, stopping...\n", utils.Timestamp(), utils.Red(sig.String()))
-			stopped = true
+		p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen())
+		if _, err := p.Run(); err != nil {
+			fmt.Printf("%s TUI error: %v\n", utils.P_WARN, err)
+		}
+	} else {
+		if !isTUI {
+			fmt.Printf("  %s TUI disabled. Type %s for commands.\n", utils.Timestamp(), utils.Green("help"))
+		}
+		cmdCh := make(chan string)
+		go stdinReader(ctx, cmdCh)
 
-		case <-h.StopCh:
-			stopped = true
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 
-		case <-ctx.Done():
-			stopped = true
+		stopped := false
+		for !stopped {
+			select {
+			case sig := <-sigCh:
+				fmt.Printf("\n%s Received %s, stopping...\n", utils.Timestamp(), utils.Red(sig.String()))
+				stopped = true
 
-		case input := <-cmdCh:
-			parts := strings.Fields(input)
-			if len(parts) == 0 {
-				continue
-			}
-			switch parts[0] {
-			case "status":
-				printInteractiveStatus(h)
-			case "list", "config":
-				printInteractiveConfig(cfg)
-			case "stats":
-				printInteractiveStatus(h)
-			case "add":
-				if len(parts) < 2 {
-					fmt.Println("  Usage: add <route> [pattern]")
-					break
+			case <-h.StopCh:
+				stopped = true
+
+			case <-ctx.Done():
+				stopped = true
+
+			case input := <-cmdCh:
+				parts := strings.Fields(input)
+				if len(parts) == 0 {
+					continue
 				}
-				route := sanitizeRoute(parts[1])
-				if route == "" {
-					fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
-					break
-				}
-				pattern := ""
-				if len(parts) > 2 {
-					pattern = parts[2]
-				}
-				cfg.Routes = append(cfg.Routes, route)
-				if pattern != "" {
-					cfg.Patterns = append(cfg.Patterns, pattern)
-				}
-				if err := mgr.SaveConfig(cfg, root); err != nil {
-					fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
-				} else {
-					fmt.Printf("  %s Added route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
-					h = restartWatcher(h, cfg, logFile)
-				}
-			case "remove", "rm":
-				if len(parts) < 2 {
-					fmt.Println("  Usage: remove <route>")
-					break
-				}
-				route := sanitizeRoute(parts[1])
-				if route == "" {
-					fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
-					break
-				}
-				newRoutes := make([]string, 0, len(cfg.Routes))
-				for _, r := range cfg.Routes {
-					if r != route {
-						newRoutes = append(newRoutes, r)
+				switch parts[0] {
+				case "status":
+					printInteractiveStatus(h)
+				case "list", "config":
+					printInteractiveConfig(cfg)
+				case "stats":
+					printInteractiveStatus(h)
+				case "add":
+					if len(parts) < 2 {
+						fmt.Println("  Usage: add <route> [pattern]")
+						break
 					}
-				}
-				if len(newRoutes) == len(cfg.Routes) {
-					fmt.Printf("  %s Route not found: %s\n", utils.P_WARN, utils.Cyan(route))
-				} else {
-					cfg.Routes = newRoutes
+					route := sanitizeRoute(parts[1])
+					if route == "" {
+						fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
+						break
+					}
+					pattern := ""
+					if len(parts) > 2 {
+						pattern = parts[2]
+					}
+					cfg.Routes = append(cfg.Routes, route)
+					if pattern != "" {
+						cfg.Patterns = append(cfg.Patterns, pattern)
+					}
 					if err := mgr.SaveConfig(cfg, root); err != nil {
 						fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
 					} else {
-						fmt.Printf("  %s Removed route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+						fmt.Printf("  %s Added route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
 						h = restartWatcher(h, cfg, logFile)
 					}
+				case "remove", "rm":
+					if len(parts) < 2 {
+						fmt.Println("  Usage: remove <route>")
+						break
+					}
+					route := sanitizeRoute(parts[1])
+					if route == "" {
+						fmt.Printf("  %s Invalid route.\n", utils.P_WARN)
+						break
+					}
+					newRoutes := make([]string, 0, len(cfg.Routes))
+					for _, r := range cfg.Routes {
+						if r != route {
+							newRoutes = append(newRoutes, r)
+						}
+					}
+					if len(newRoutes) == len(cfg.Routes) {
+						fmt.Printf("  %s Route not found: %s\n", utils.P_WARN, utils.Cyan(route))
+					} else {
+						cfg.Routes = newRoutes
+						if err := mgr.SaveConfig(cfg, root); err != nil {
+							fmt.Printf("  %s Failed to save config: %v\n", utils.P_ERROR, err)
+						} else {
+							fmt.Printf("  %s Removed route: %s\n", utils.P_SUCCESS, utils.Cyan(route))
+							h = restartWatcher(h, cfg, logFile)
+						}
+					}
+				case "reload":
+					newCfg, err := mgr.LoadConfig(root)
+					if err != nil {
+						fmt.Printf("  %s Failed to reload config: %v\n", utils.P_ERROR, err)
+					} else {
+						cfg = newCfg
+						h = restartWatcher(h, cfg, logFile)
+						fmt.Printf("  %s Config reloaded.\n", utils.P_SUCCESS)
+					}
+				case "stop", "quit", "exit":
+					fmt.Println("  Stopping watcher...")
+					stopped = true
+				case "monitor", "m":
+					printInteractiveStatus(h)
+					monitorLoop(ctx, h)
+				case "help":
+					printInteractiveHelp()
+				default:
+					fmt.Printf("  Unknown command: %s. Type %s.\n", parts[0], utils.Green("help"))
 				}
-			case "reload":
-				newCfg, err := mgr.LoadConfig(root)
-				if err != nil {
-					fmt.Printf("  %s Failed to reload config: %v\n", utils.P_ERROR, err)
-				} else {
-					cfg = newCfg
-					h = restartWatcher(h, cfg, logFile)
-					fmt.Printf("  %s Config reloaded.\n", utils.P_SUCCESS)
-				}
-			case "stop", "quit", "exit":
-				fmt.Println("  Stopping watcher...")
-				stopped = true
-			case "monitor", "m":
-				printInteractiveStatus(h)
-				monitorLoop(ctx, h)
-			case "help":
-				printInteractiveHelp()
-			default:
-				fmt.Printf("  Unknown command: %s. Type %s.\n", parts[0], utils.Green("help"))
 			}
 		}
 	}
@@ -553,6 +571,7 @@ Options:
   --root <path>          Drupal root directory (default: cwd)
   --debounce <ms>        Debounce interval (default: 800)
   --no-dotfiles          Ignore dotfiles
+  --no-tui               Disable TUI, use interactive CLI instead
   --notify               Send desktop notification on cache clear
   --log-file <path>      Write logs to file
   --commands-per-pattern <json>  Override pattern commands
@@ -569,6 +588,14 @@ func restartWatcher(h *watcher.Handle, cfg config.Config, logFile *os.File) *wat
 	}
 	fmt.Printf("  %s Watcher restarted.\n", utils.P_SUCCESS)
 	return newH
+}
+
+func isatty() bool {
+	if runtime.GOOS == "windows" {
+		return true
+	}
+	_, err := os.Stat("/dev/tty")
+	return err == nil
 }
 
 func printInteractiveStatus(h *watcher.Handle) {
