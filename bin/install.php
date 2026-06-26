@@ -17,18 +17,21 @@ $packageJson = $installDir . '/../composer.json';
 $binaryPath = $installDir . '/drupal-watcher-go';
 $launcherPath = $installDir . '/drupal-watcher';
 
-// Find project root (directory containing vendor/bin) by walking up
-$vendorBin = null;
-$dir = $installDir;
-for ($i = 0; $i < 10; $i++) {
-	$candidate = realpath($dir . '/vendor/bin');
-	if ($candidate !== false && is_dir($candidate)) {
-		$vendorBin = $candidate;
-		break;
+// Determine vendor/bin directory
+$vendorBin = getenv('COMPOSER_RUNTIME_BIN_DIR');
+if ($vendorBin === false || !is_dir($vendorBin)) {
+	$vendorBin = null;
+	$dir = $installDir;
+	for ($i = 0; $i < 10; $i++) {
+		$candidate = realpath($dir . '/vendor/bin');
+		if ($candidate !== false && is_dir($candidate)) {
+			$vendorBin = $candidate;
+			break;
+		}
+		$parent = dirname($dir);
+		if ($parent === $dir) break;
+		$dir = $parent;
 	}
-	$parent = dirname($dir);
-	if ($parent === $dir) break;
-	$dir = $parent;
 }
 
 // ─── Step 1: if package is not installed, clean up vendor/bin ──────────────
@@ -50,7 +53,10 @@ if (!file_exists($packageJson)) {
 if (!file_exists($launcherPath)) {
 	echo "Warning: Launcher script not found at {$launcherPath}. Skipping symlink creation.\n";
 	echo "Reinstall the package to restore it: composer reinstall irving-frias/drupal-watcher\n";
-} elseif ($vendorBin) {
+} elseif (!$vendorBin) {
+	echo "Warning: Could not locate vendor/bin directory. Symlink not created.\n";
+	echo "Run: ln -s {$launcherPath} <project-root>/vendor/bin/drupal-watcher\n";
+} else {
 	$linkPath = $vendorBin . '/drupal-watcher';
 	$target = $launcherPath;
 
@@ -61,6 +67,7 @@ if (!file_exists($launcherPath)) {
 	}
 	if (!file_exists($linkPath)) {
 		@symlink($target, $linkPath);
+		echo "Created vendor/bin/drupal-watcher -> {$launcherPath}\n";
 	}
 }
 
