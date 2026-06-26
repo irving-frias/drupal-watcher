@@ -7,11 +7,9 @@
  *   - Composer post-install-cmd / post-update-cmd
  *   - bin/drupal-watcher shell launcher (first-run download)
  *
- * Scenarios handled:
- *   - composer install               → download binary, create symlink
- *   - composer update                → download binary (if version changed), recreate symlink
- *   - composer remove drupal-watcher → clean up vendor/bin/drupal-watcher
- *   - manual deletion of vendor/     → re-download, recreate symlink
+ * This script is the sole manager of vendor/bin/drupal-watcher.
+ * The composer.json does NOT declare a "bin" entry to avoid
+ * Composer proxy scripts that can break when the target is missing.
  */
 
 $installDir = __DIR__;
@@ -39,7 +37,7 @@ if (!file_exists($packageJson)) {
 		$linkPath = $vendorBin . '/drupal-watcher';
 		if (is_link($linkPath) || file_exists($linkPath)) {
 			@unlink($linkPath);
-			echo "🧹 Cleaned up vendor/bin/drupal-watcher (package removed)\n";
+			echo "Cleaned up vendor/bin/drupal-watcher (package removed)\n";
 		}
 	}
 	if (file_exists($binaryPath)) {
@@ -48,13 +46,14 @@ if (!file_exists($packageJson)) {
 	exit(0);
 }
 
-// ─── Step 2: package exists — ensure symlink in vendor/bin ─────────────────
-$packageRoot = realpath($installDir . '/..');
-if ($vendorBin) {
+// ─── Step 2: ensure launcher exists before creating symlink ────────────────
+if (!file_exists($launcherPath)) {
+	echo "Warning: Launcher script not found at {$launcherPath}. Skipping symlink creation.\n";
+	echo "Reinstall the package to restore it: composer reinstall irving-frias/drupal-watcher\n";
+} elseif ($vendorBin) {
 	$linkPath = $vendorBin . '/drupal-watcher';
 	$target = $launcherPath;
 
-	// Fix: if symlink points somewhere else or is dead, recreate it
 	if (is_link($linkPath) || file_exists($linkPath)) {
 		if (!is_link($linkPath) || readlink($linkPath) !== $target) {
 			@unlink($linkPath);
@@ -73,7 +72,6 @@ $expectedVersion = $composerMeta['extra']['drupal-watcher-version'] ?? '1.0.0';
 $needsDownload = true;
 
 if (file_exists($binaryPath) && is_executable($binaryPath)) {
-	// Check version marker — skip download if same version already installed
 	$versionFile = $installDir . '/.binary-version';
 	if (file_exists($versionFile) && trim(file_get_contents($versionFile)) === $expectedVersion) {
 		$needsDownload = false;
@@ -103,7 +101,6 @@ if (!$version) {
 	$version = $expectedVersion;
 }
 
-// Map OS
 $osMap = [
 	'Linux'    => 'linux',
 	'Darwin'   => 'darwin',
@@ -113,7 +110,6 @@ $osMap = [
 ];
 $goos = $osMap[PHP_OS] ?? strtolower(PHP_OS);
 
-// Map arch
 $archMap = [
 	'x86_64'  => 'amd64',
 	'amd64'   => 'amd64',
@@ -135,7 +131,7 @@ if ($isWindows) {
 }
 
 $url = "https://github.com/{$repo}/releases/download/{$version}/{$archiveName}";
-echo "⬇  Downloading {$archiveName}...\n";
+echo "Downloading {$archiveName}...\n";
 
 $context = stream_context_create([
 	'http' => [
@@ -152,14 +148,16 @@ $context = stream_context_create([
 
 $data = @file_get_contents($url, false, $context);
 if ($data === false) {
-	echo "⚠  Download failed: {$url}\n";
-	echo "   Install Go or download manually from: https://github.com/{$repo}/releases\n";
+	echo "Warning: download failed from {$url}\n";
+	echo "The launcher is still available at vendor/bin/drupal-watcher.\n";
+	echo "To resolve: install Go locally or download the binary manually from:\n";
+	echo "  https://github.com/{$repo}/releases\n";
 	exit(1);
 }
 
 if ($isWindows) {
 	if (!class_exists('ZipArchive')) {
-		echo "✖ Zip extension required. Unzip manually: {$url}\n";
+		echo "Error: Zip extension required. Unzip manually from: {$url}\n";
 		exit(1);
 	}
 	$zipPath = $installDir . '/drupal-watcher-tmp.zip';
@@ -174,7 +172,7 @@ if ($isWindows) {
 } else {
 	$decompressed = gzdecode($data);
 	if ($decompressed === false) {
-		echo "✖ Failed to decompress {$archiveName}\n";
+		echo "Error: failed to decompress {$archiveName}\n";
 		exit(1);
 	}
 	file_put_contents($binaryPath, $decompressed);
@@ -182,7 +180,6 @@ if ($isWindows) {
 
 chmod($binaryPath, 0755);
 
-// Write version marker so we skip re-download on subsequent runs
 file_put_contents($installDir . '/.binary-version', $version);
 
-echo "✔ Installed drupal-watcher {$version} ({$goos}/{$goarch})\n";
+echo "Installed drupal-watcher {$version} ({$goos}/{$goarch})\n";

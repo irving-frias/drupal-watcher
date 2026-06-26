@@ -11,9 +11,13 @@ BINARY="$DIR/drupal-watcher-go"
 
 # Run setup: download binary if missing, ensure vendor/bin symlink
 php "$DIR/install.php"
+INSTALL_EXIT=$?
 
 if [ ! -x "$BINARY" ]; then
   echo "Error: Drupal Watcher binary not found at $BINARY" >&2
+  if [ $INSTALL_EXIT -ne 0 ]; then
+    echo "The install script failed — check network connectivity or install Go manually." >&2
+  fi
   echo "Download manually from: https://github.com/irving-frias/drupal-watcher/releases" >&2
   exit 1
 fi
