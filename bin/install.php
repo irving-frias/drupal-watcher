@@ -1,23 +1,21 @@
 #!/usr/bin/env php
 <?php
 /**
- * Drupal Watcher — binary downloader and vendor/bin symlink manager
+ * Drupal Watcher — binary downloader
  *
  * Called via:
  *   - Composer post-install-cmd / post-update-cmd
  *   - bin/drupal-watcher shell launcher (first-run download)
  *
- * This script is the sole manager of vendor/bin/drupal-watcher.
- * The composer.json does NOT declare a "bin" entry to avoid
- * Composer proxy scripts that can break when the target is missing.
+ * vendor/bin/drupal-watcher is managed by Composer via the "bin" field
+ * in composer.json. This script only handles binary download.
  */
 
 $installDir = __DIR__;
 $packageJson = $installDir . '/../composer.json';
 $binaryPath = $installDir . '/drupal-watcher-go';
-$launcherPath = $installDir . '/drupal-watcher';
 
-// Determine vendor/bin directory
+// Determine vendor/bin directory (used for cleanup when package is removed)
 $vendorBin = getenv('COMPOSER_RUNTIME_BIN_DIR');
 if ($vendorBin === false || !is_dir($vendorBin)) {
 	$vendorBin = null;
@@ -34,41 +32,18 @@ if ($vendorBin === false || !is_dir($vendorBin)) {
 	}
 }
 
-// ─── Step 1: if package is not installed, clean up vendor/bin ──────────────
+// ─── Step 1: if package is not removed, clean up ───────────────────────────
 if (!file_exists($packageJson)) {
 	if ($vendorBin) {
-		$linkPath = $vendorBin . '/drupal-watcher';
-		if (is_link($linkPath) || file_exists($linkPath)) {
-			@unlink($linkPath);
-			echo "Cleaned up vendor/bin/drupal-watcher (package removed)\n";
+		$proxyPath = $vendorBin . '/drupal-watcher';
+		if (is_file($proxyPath) || is_link($proxyPath)) {
+			@unlink($proxyPath);
 		}
 	}
 	if (file_exists($binaryPath)) {
 		@unlink($binaryPath);
 	}
 	exit(0);
-}
-
-// ─── Step 2: ensure launcher exists before creating symlink ────────────────
-if (!file_exists($launcherPath)) {
-	echo "Warning: Launcher script not found at {$launcherPath}. Skipping symlink creation.\n";
-	echo "Reinstall the package to restore it: composer reinstall irving-frias/drupal-watcher\n";
-} elseif (!$vendorBin) {
-	echo "Warning: Could not locate vendor/bin directory. Symlink not created.\n";
-	echo "Run: ln -s {$launcherPath} <project-root>/vendor/bin/drupal-watcher\n";
-} else {
-	$linkPath = $vendorBin . '/drupal-watcher';
-	$target = $launcherPath;
-
-	if (is_link($linkPath) || file_exists($linkPath)) {
-		if (!is_link($linkPath) || readlink($linkPath) !== $target) {
-			@unlink($linkPath);
-		}
-	}
-	if (!file_exists($linkPath)) {
-		@symlink($target, $linkPath);
-		echo "Created vendor/bin/drupal-watcher -> {$launcherPath}\n";
-	}
 }
 
 // Read version from our composer.json

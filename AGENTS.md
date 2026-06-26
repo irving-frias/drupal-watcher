@@ -9,7 +9,7 @@
 
 ## Project structure
 - `bin/drupal-watcher` — Shell launcher (runs `install.php` to download Go binary, then execs it)
-- `bin/install.php` — Binary downloader and `vendor/bin/drupal-watcher` symlink manager (sole manager — `composer.json` has no `bin` field to avoid proxy script conflicts)
+- `bin/install.php` — Binary downloader (vendor/bin entry managed by Composer via the `bin` field in `composer.json`)
 - `cmd/drupal-watcher/main.go` — Entry point, arg parsing (`parseFlags`), dispatch (switch-based)
 - `internal/config/config.go` — `Manager` struct with per-root cache, config load/save, Drupal root detection, PID management
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
