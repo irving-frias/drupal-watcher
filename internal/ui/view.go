@@ -1,4 +1,4 @@
-package tui
+package ui
 
 import (
 	"fmt"
@@ -75,11 +75,10 @@ func (m *Model) renderStatus() string {
 		sparkStr = "  " + dim.Render(spark)
 	}
 
-	memLine := fmt.Sprintf("Memory: %s%s  |  Kernel watches: %d  |  Changes: %d  |  Clears: %d",
+	memLine := fmt.Sprintf("Memory: %s%s  |  Changes: %d  |  Clears: %d",
 		memColor.Render(fmt.Sprintf("%.1f MB", s.AllocMB)),
-		sparkStr, s.WatchCount, s.Changes, s.Clears)
+		sparkStr, s.Changes, s.Clears)
 
-	// Per-site clears
 	if len(m.siteClears) > 0 {
 		var names []string
 		for name := range m.siteClears {

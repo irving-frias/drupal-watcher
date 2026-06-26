@@ -1,15 +1,13 @@
-package tui
+package ui
 
 import (
 	"fmt"
-	"os"
-	"runtime"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
-	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -137,34 +135,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case tickMsg:
-		uptime := time.Since(m.Watcher.Stats.StartTime)
-		var allocMB float64
-		var mem runtime.MemStats
-		runtime.ReadMemStats(&mem)
-		allocMB = float64(mem.Alloc) / 1024 / 1024
-
-		m.memHistory = append(m.memHistory, allocMB)
-		if len(m.memHistory) > sparklineSize {
-			m.memHistory = m.memHistory[1:]
-		}
-
-		m.status = statusLine{
-			PID:        os.Getpid(),
-			Uptime:     utils.FormatDuration(uptime),
-			Changes:    m.Watcher.Stats.Changes.Load(),
-			Clears:     m.Watcher.Stats.Clears.Load(),
-			WatchCount: m.Watcher.WatchCount.Load(),
-			AllocMB:    allocMB,
-			Running:    true,
-		}
+		m.updateStatus()
 		m.viewport.SetContent(m.renderEvents())
 		return m, tickCmd()
 
-	case watcherEventMsg:
+	case engineEventMsg:
 		evt := msg.Event
 		ts := evt.Timestamp.Format("15:04:05")
 		switch evt.Type {
-		case watcher.EventChange:
+		case core.EventChange:
 			line := fmt.Sprintf("Change detected: %s", evt.File)
 			if evt.Changes > 1 {
 				line = fmt.Sprintf("%d changes detected (last: %s)", evt.Changes, evt.File)
@@ -174,7 +153,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Content:   line,
 				Style:     infoStyle,
 			})
-		case watcher.EventDrush:
+		case core.EventCacheClear:
 			icon := successStyle
 			if evt.ExitCode != 0 {
 				icon = errorStyle
@@ -193,7 +172,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Content:   line,
 				Style:     icon,
 			})
-		case watcher.EventError:
+		case core.EventError:
 			m.pushEvent(eventLine{
 				Timestamp: ts,
 				Content:   fmt.Sprintf("Error: %v", evt.Error),
@@ -204,15 +183,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.autoScroll {
 			m.viewport.GotoBottom()
 		}
-		return m, listenForEvents(m.Watcher)
-
-	case errMsg:
-		m.pushEvent(eventLine{
-			Timestamp: time.Now().Format("15:04:05"),
-			Content:   fmt.Sprintf("Error: %v", msg.Err),
-			Style:     errorStyle,
-		})
-		return m, nil
+		return m, listenForEvents(m.eventChan)
 	}
 
 	return m, nil
@@ -286,11 +257,12 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 
 	switch parts[0] {
 	case "status":
-		uptime := time.Since(m.Watcher.Stats.StartTime)
+		changes, clears := m.engineInfo.Stats()
+		uptime := time.Since(m.engineInfo.StartTime())
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),
 			Content: fmt.Sprintf("PID %d | Changes: %d | Clears: %d | Uptime: %s",
-				os.Getpid(), m.Watcher.Stats.Changes.Load(), m.Watcher.Stats.Clears.Load(), utils.FormatDuration(uptime)),
+				m.status.PID, changes, clears, utils.FormatDuration(uptime)),
 			Style: infoStyle,
 		})
 	case "help":

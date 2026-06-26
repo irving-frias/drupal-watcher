@@ -352,18 +352,147 @@ The watcher writes a PID file (`watcher.pid`) to prevent multiple instances. If 
 
 ## Architecture
 
+The codebase uses a plugin-style architecture. Core interfaces live in `pkg/core/`, implementations in `pkg/adapters/`, and the event loop orchestrator in `internal/orchestrator/`. Adding new features (Slack, Redis, custom scripts) requires zero changes to the orchestrator — just implement an interface.
+
 ```
-bin/drupal-watcher      → Shell launcher (downloads binary if missing)
-bin/install.php         → Composer hook, downloads binary for current OS/arch
-cmd/drupal-watcher/     → Entry point, flag parsing, command dispatch
+cmd/
+  drupal-watcher/        → CLI entry point (flag parsing, command dispatch)
+  watcher/               → Thin DI entry point (pure dependency injection)
+
+pkg/
+  core/
+    interfaces.go        → Watcher, CommandExecutor, EventFilter, PostProcessor
+    models.go            → FileEvent, ExecutionResult, EngineEvent, SiteInfo
+  adapters/
+    fsnotify_watcher.go  → core.Watcher via fsnotify
+    drush_executor.go    → core.CommandExecutor via drush
+    regex_filter.go      → Pattern/Exclude/Dotfile filters
+    slog_logger.go       → Structured logger factory
+
 internal/
-  config/               → Config management, Drupal root detection, PID files
-  drush/                → Drush resolution, execution, health checks, OS notifications
-  watcher/              → fsnotify file watcher with debounce, atomic stats
-  cli/                  → All CLI and TUI command implementations
-  tui/                  → BubbleTea terminal UI (model, view, update, styles)
-  utils/                → Color helpers, format utilities, shared helpers
+  orchestrator/
+    engine.go            → Central engine: debounce, filter pipeline, execution, hooks
+  hooks/
+    builtin/
+      drush_clear.go     → Default post-execution hook
+    examples/
+      slack.go           → Demo: Slack webhook notifier
+  ui/
+    model.go             → BubbleTea TUI model
+    view.go             → TUI rendering
+    update.go           → TUI event handling
+    styles.go           → TUI lipgloss styles
+    tui.go              → Public Run() function
+  config/                → Config management, Drupal root detection, PID files
+  drush/                 → Drush resolution, execution, health checks, OS notifications
+  cli/                   → CLI command implementations (uses orchestrator)
+  utils/                 → Color helpers, format utilities, shared helpers
 ```
+
+### Key interfaces
+
+```go
+// pkg/core/interfaces.go
+
+type Watcher interface {
+    Start(ctx context.Context) (<-chan FileEvent, <-chan error)
+    Add(path string) error
+    Remove(path string) error
+    Close() error
+}
+
+type CommandExecutor interface {
+    Execute(ctx context.Context, commands []string, dir string) ExecutionResult
+}
+
+type EventFilter interface {
+    ShouldProcess(event FileEvent) bool
+}
+
+type PostProcessor interface {
+    Name() string
+    Process(ctx context.Context, event FileEvent, result ExecutionResult) error
+}
+```
+
+### Engine event loop
+
+The orchestrator (`internal/orchestrator/engine.go`) runs the central pipeline:
+
+1. Watcher emits raw `FileEvent` on a channel
+2. All `EventFilter` implementations decide if the event should be processed
+3. Debounce timer groups rapid changes into a single batch
+4. Matching file extensions are resolved to drush commands via `CommandsPerPattern`
+5. `CommandExecutor` runs the resolved commands
+6. All `PostProcessor` implementations run sequentially with the execution result
+7. `EngineEvent` is sent to the TUI channel (if subscribed)
+
+### Extensibility: adding a custom post-processor
+
+To add a new feature (Slack, Redis, metrics, etc.), create a file in `internal/hooks/` or anywhere in the project, implementing `core.PostProcessor`:
+
+```go
+package hooks
+
+import (
+    "bytes"
+    "context"
+    "encoding/json"
+    "net/http"
+    "time"
+
+    "github.com/irving-frias/drupal-watcher/pkg/core"
+)
+
+type SlackNotifier struct {
+    WebhookURL string
+    client     *http.Client
+}
+
+func (s *SlackNotifier) Name() string { return "SlackNotifier" }
+
+func (s *SlackNotifier) Process(ctx context.Context, event core.FileEvent, result core.ExecutionResult) error {
+    payload, _ := json.Marshal(map[string]interface{}{
+        "text": "drush " + result.Command + " — exit " + string(rune(result.ExitCode)),
+    })
+    req, _ := http.NewRequestWithContext(ctx, "POST", s.WebhookURL, bytes.NewReader(payload))
+    resp, err := s.client.Do(req)
+    if err != nil {
+        return err
+    }
+    resp.Body.Close()
+    return nil
+}
+```
+
+Then wire it in the entry point (zero changes to the orchestrator):
+
+```go
+// cmd/watcher/main.go
+
+engineCfg := core.EngineConfig{
+    Watcher:  fsnWatcher,
+    Executor: drushExec,
+    Filters:  []core.EventFilter{patternFilter, excludeFilter},
+    PostProcessors: []core.PostProcessor{
+        builtin.NewDrushClear(),                               // default
+        hooks.NewSlackNotifier("https://hooks.slack.com/..."), // one-liner addition
+    },
+    // ...
+}
+```
+
+The `PostProcessor` interface is the extension point. The engine iterates over all registered processors after every cache clear.
+
+### New entry point: `cmd/watcher`
+
+A minimal dependency-injection entry point that wires all components explicitly:
+
+```bash
+go run ./cmd/watcher --root /path/to/drupal --debounce 500
+```
+
+Flags: `--root`, `--config`, `--debounce`, `--no-tui`. Does **not** include legacy CLI commands (add/remove/list/stop). For those, use `cmd/drupal-watcher`.
 
 ## Development (requires Go 1.24+)
 

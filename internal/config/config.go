@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/utils"
-	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"github.com/irving-frias/drupal-watcher/pkg/core"
 	"github.com/pterm/pterm"
 )
 
@@ -29,24 +29,24 @@ type Config struct {
 	CommandsPerPattern  map[string]string `json:"commandsPerPattern"`
 	DrupalRoot          *string           `json:"drupalRoot"`
 	Notify              bool              `json:"-"`
-	Sites               []string          `json:"sites,omitempty"`
-	resolvedSites       []watcher.SiteInfo
+	Sites               []string        `json:"sites,omitempty"`
+	resolvedSites       []core.SiteInfo
 }
 
-func (c Config) GetDrushCmd() *string                 { return c.DrushCmd }
-func (c Config) GetDrushCommand() string              { return c.DrushCommand }
-func (c Config) GetDrushArgs() []string               { return c.DrushArgs }
-func (c Config) GetDrupalRoot() *string               { return c.DrupalRoot }
-func (c Config) GetRoutes() []string                  { return c.Routes }
-func (c Config) GetPatterns() []string                { return c.Patterns }
-func (c Config) GetExcludePatterns() []string         { return c.ExcludePatterns }
-func (c Config) GetDebounce() int                     { return c.Debounce }
+func (c Config) GetDrushCmd() *string                    { return c.DrushCmd }
+func (c Config) GetDrushCommand() string                 { return c.DrushCommand }
+func (c Config) GetDrushArgs() []string                  { return c.DrushArgs }
+func (c Config) GetDrupalRoot() *string                  { return c.DrupalRoot }
+func (c Config) GetRoutes() []string                     { return c.Routes }
+func (c Config) GetPatterns() []string                   { return c.Patterns }
+func (c Config) GetExcludePatterns() []string            { return c.ExcludePatterns }
+func (c Config) GetDebounce() int                        { return c.Debounce }
 func (c Config) GetCommandsPerPattern() map[string]string { return c.CommandsPerPattern }
-func (c Config) GetNotify() bool                       { return c.Notify }
-func (c Config) GetPostClearCommands() []string       { return c.PostClearCommands }
-func (c Config) GetResolvedSites() []watcher.SiteInfo { return c.resolvedSites }
+func (c Config) GetNotify() bool                          { return c.Notify }
+func (c Config) GetPostClearCommands() []string          { return c.PostClearCommands }
+func (c Config) GetResolvedSites() []core.SiteInfo       { return c.resolvedSites }
 
-func (c *Config) SetResolvedSites(sites []watcher.SiteInfo) { c.resolvedSites = sites }
+func (c *Config) SetResolvedSites(sites []core.SiteInfo) { c.resolvedSites = sites }
 
 type Manager struct {
 	cache           map[string]*cacheEntry

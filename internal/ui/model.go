@@ -1,13 +1,16 @@
-package tui
+package ui
 
 import (
+	"os"
+	"runtime"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
 const eventBufferSize = 100
@@ -21,8 +24,24 @@ type eventLine struct {
 	Count     int
 }
 
+type statusLine struct {
+	PID        int
+	Uptime     string
+	Changes    int64
+	Clears     int64
+	AllocMB    float64
+	Running    bool
+}
+
+type EngineInfo interface {
+	Stats() (changes, clears int64)
+	StartTime() time.Time
+}
+
 type Model struct {
-	Watcher  *watcher.Handle
+	eventChan <-chan core.EngineEvent
+	engineInfo EngineInfo
+
 	status   statusLine
 	events   []eventLine
 	eventCap int
@@ -44,17 +63,7 @@ type Model struct {
 	completionIdx int
 }
 
-type statusLine struct {
-	PID        int
-	Uptime     string
-	Changes    int64
-	Clears     int64
-	WatchCount int64
-	AllocMB    float64
-	Running    bool
-}
-
-func NewModel(w *watcher.Handle) *Model {
+func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "type help to see commands"
 	ti.Focus()
@@ -62,7 +71,8 @@ func NewModel(w *watcher.Handle) *Model {
 	ti.Width = 50
 
 	return &Model{
-		Watcher:    w,
+		eventChan:  eventChan,
+		engineInfo: info,
 		events:     make([]eventLine, 0, eventBufferSize),
 		eventCap:   eventBufferSize,
 		viewport:   viewport.New(78, 10),
@@ -78,7 +88,7 @@ func NewModel(w *watcher.Handle) *Model {
 func (m *Model) Init() tea.Cmd {
 	return tea.Batch(
 		tickCmd(),
-		listenForEvents(m.Watcher),
+		listenForEvents(m.eventChan),
 		textinput.Blink,
 	)
 }
@@ -89,16 +99,13 @@ func tickCmd() tea.Cmd {
 	})
 }
 
-func listenForEvents(w *watcher.Handle) tea.Cmd {
+func listenForEvents(eventChan <-chan core.EngineEvent) tea.Cmd {
 	return func() tea.Msg {
-		if w.EventCh == nil {
-			return nil
-		}
-		evt, ok := <-w.EventCh
+		evt, ok := <-eventChan
 		if !ok {
 			return nil
 		}
-		return watcherEventMsg{Event: evt}
+		return engineEventMsg{Event: evt}
 	}
 }
 
@@ -128,3 +135,26 @@ func (m *Model) addToHistory(cmd string) {
 }
 
 var commands = []string{"status", "stats", "filter", "help", "stop", "quit", "exit"}
+
+func (m *Model) updateStatus() {
+	uptime := time.Since(m.engineInfo.StartTime())
+	var allocMB float64
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+	allocMB = float64(mem.Alloc) / 1024 / 1024
+
+	m.memHistory = append(m.memHistory, allocMB)
+	if len(m.memHistory) > sparklineSize {
+		m.memHistory = m.memHistory[1:]
+	}
+
+	changes, clears := m.engineInfo.Stats()
+	m.status = statusLine{
+		PID:     os.Getpid(),
+		Uptime:  utils.FormatDuration(uptime),
+		Changes: changes,
+		Clears:  clears,
+		AllocMB: allocMB,
+		Running: true,
+	}
+}

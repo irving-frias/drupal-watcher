@@ -13,16 +13,17 @@ import (
 	"syscall"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/drush"
-	"github.com/irving-frias/drupal-watcher/internal/tui"
+	"github.com/irving-frias/drupal-watcher/internal/orchestrator"
+	"github.com/irving-frias/drupal-watcher/internal/ui"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
-	"github.com/irving-frias/drupal-watcher/internal/watcher"
+	"github.com/irving-frias/drupal-watcher/pkg/adapters"
+	"github.com/irving-frias/drupal-watcher/pkg/core"
 	"github.com/pterm/pterm"
 )
 
-var Version = "0.1.0" // overridden via ldflags at build time
+var Version = "0.1.0"
 
 func PkgVersion() string { return Version }
 
@@ -32,12 +33,10 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		return fmt.Errorf("%w", err)
 	}
 
-	// Override debounce from flag
 	if d, ok := flags["debounce"].(int); ok && d > 0 {
 		cfg.Debounce = d
 	}
 
-	// Check PID
 	pidStatus, err := config.CheckPid(root)
 	if err != nil {
 		pterm.Warning.Printfln("Failed to check PID: %v", err)
@@ -50,7 +49,6 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		return nil
 	}
 
-	// Drush health check
 	spinner, _ := pterm.DefaultSpinner.Start("Checking drush health...")
 	ok := drush.HealthCheck(cfg)
 	if ok {
@@ -59,48 +57,27 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		spinner.Warning("Drush is not available. Starting without health check.")
 	}
 
-	// Write PID
 	if err := config.WritePid(root); err != nil {
 		return fmt.Errorf("failed to write PID: %w", err)
 	}
 	defer config.RemovePid(root)
 
-	// Determine log file
-	var logFile *os.File
-	if lf, ok := flags["log-file"].(string); ok && lf != "" {
-		f, err := os.OpenFile(lf, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			pterm.Warning.Printfln("Failed to open log file: %v", err)
-		} else {
-			logFile = f
-			pterm.Info.Printfln("Logging to %s", utils.Cyan(lf))
-		}
-	}
-	if logFile != nil {
-		defer logFile.Close()
-	}
-
-	// Handle dotfiles
 	if nd, ok := flags["no-dotfiles"].(bool); ok && nd {
 		cfg.ExcludePatterns = append(cfg.ExcludePatterns, "/.")
 	}
 
-	// Handle notify
 	if n, ok := flags["notify"].(bool); ok && n {
 		cfg.Notify = true
 	}
 
-	// Site resolution
 	drupalRoot := root
 	if cfg.DrupalRoot != nil {
 		drupalRoot = filepath.Join(root, *cfg.DrupalRoot)
 	}
 
 	if uri, ok := flags["uri"].(string); ok && uri != "" {
-		// Explicit --uri: single site mode
 		cfg.DrushArgs = append([]string{"--uri=" + uri}, cfg.DrushArgs...)
 	} else if include, ok := flags["site"].([]string); ok && len(include) > 0 {
-		// --site flag: load only specified sites from sites.yml
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%v", err)
@@ -109,14 +86,13 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		if len(filtered) == 0 {
 			return fmt.Errorf("no matching sites found in drush/sites.yml")
 		}
-		var siteList []watcher.SiteInfo
+		var siteList []core.SiteInfo
 		for _, s := range filtered {
-			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+			siteList = append(siteList, core.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
 		pterm.Info.Printfln("Watching sites: %s", utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if exclude, ok := flags["exclude-site"].([]string); ok && len(exclude) > 0 {
-		// --exclude-site: load all from sites.yml, exclude some
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%v", err)
@@ -125,14 +101,13 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		if len(filtered) == 0 {
 			return fmt.Errorf("all sites excluded. Nothing to watch.")
 		}
-		var siteList []watcher.SiteInfo
+		var siteList []core.SiteInfo
 		for _, s := range filtered {
-			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+			siteList = append(siteList, core.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
 		pterm.Info.Printfln("Watching sites: %s", utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if len(cfg.Sites) > 0 {
-		// Persisted sites from config file
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("%v", err)
@@ -141,27 +116,25 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		if len(filtered) == 0 {
 			return fmt.Errorf("no matching sites in drush/sites.yml for config sites")
 		}
-		var siteList []watcher.SiteInfo
+		var siteList []core.SiteInfo
 		for _, s := range filtered {
-			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+			siteList = append(siteList, core.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
 		pterm.Info.Printfln("Watching sites: %s (from config)", utils.Cyan(drush.PrintSiteList(filtered)))
 	} else if drush.HasMultiSite(drupalRoot) {
-		// Multi-site detected, try to load sites.yml
 		allSites, err := drush.LoadSitesYml(drupalRoot, root)
 		if err != nil {
 			return fmt.Errorf("multi-site detected: %v.\n  Create drush/sites.yml or drush/sites/*.site.yml to use drupal-watcher.\n  See: https://www.drush.org/latest/using-drush/site-aliases/", err)
 		}
-		var siteList []watcher.SiteInfo
+		var siteList []core.SiteInfo
 		for _, s := range allSites {
-			siteList = append(siteList, watcher.SiteInfo{Name: s.Name, URI: s.URI})
+			siteList = append(siteList, core.SiteInfo{Name: s.Name, URI: s.URI})
 		}
 		cfg.SetResolvedSites(siteList)
 		pterm.Info.Printfln("Watching all %d sites: %s", len(siteList), utils.Cyan(drush.PrintSiteList(allSites)))
 	}
 
-	// Add per-site routes for site-specific modules/themes
 	if resolved := cfg.GetResolvedSites(); len(resolved) > 0 && cfg.DrupalRoot != nil {
 		for _, site := range resolved {
 			siteRoot := filepath.Join(*cfg.DrupalRoot, "sites", site.Name)
@@ -174,130 +147,139 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		}
 	}
 
-	// Start watcher
-	h, err := watcher.Start(cfg, logFile)
+	logger := adapters.NewSlogLogger("")
+	skipDirs := append(adapters.DefaultSkipDirs(), cfg.ExcludePatterns...)
+
+	fsnWatcher, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
 	if err != nil {
-		return fmt.Errorf("failed to start watcher: %w", err)
+		return fmt.Errorf("failed to create watcher: %w", err)
+	}
+	defer fsnWatcher.Close()
+
+	drushExec := adapters.NewDrushExecutor(cfg)
+
+	patternFilter := adapters.NewPatternFilter(cfg.Patterns)
+	excludeFilter := adapters.NewExcludeFilter(cfg.ExcludePatterns)
+	filters := []core.EventFilter{patternFilter, excludeFilter}
+
+	var resolvedSites []core.SiteInfo
+	for _, s := range cfg.GetResolvedSites() {
+		resolvedSites = append(resolvedSites, core.SiteInfo{Name: s.Name, URI: s.URI})
 	}
 
-	// Show startup info
-	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
+	dr := ""
+	if cfg.DrupalRoot != nil {
+		dr = filepath.Join(root, *cfg.DrupalRoot)
+	}
+
+	engineCfg := core.EngineConfig{
+		Watcher:  fsnWatcher,
+		Executor: drushExec,
+		SiteExecutorFactory: func(site core.SiteInfo) core.CommandExecutor {
+			return adapters.NewSiteAwareDrushExecutor(cfg, site.Name, site.URI)
+		},
+		Filters:            filters,
+		PostProcessors:     []core.PostProcessor{},
+		EventChan:          nil,
+		Logger:             logger,
+		Debounce:           cfg.Debounce,
+		Patterns:           cfg.Patterns,
+		ExcludePatterns:    cfg.ExcludePatterns,
+		CommandsPerPattern: cfg.CommandsPerPattern,
+		ResolvedSites:      resolvedSites,
+		DrupalRoot:         dr,
+	}
+
+	engine := orchestrator.New(engineCfg)
+
 	pterm.Info.Printfln("Routes: %s", utils.Cyan(strings.Join(cfg.Routes, ", ")))
 	pterm.Info.Printfln("Patterns: %s", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
 	pterm.Success.Printfln("Watcher started. PID %d.", os.Getpid())
 
-	// Try TUI, fall back to interactive stdin if no TTY
 	isTUI := true
 	if nt, ok := flags["no-tui"].(bool); ok && nt {
 		isTUI = false
 	}
 
-	if isTUI && isatty() {
-		eventCh := make(chan watcher.EventMsg, 100)
-		h.EventCh = eventCh
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-		p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen(), tea.WithMouseCellMotion())
-		if _, err := p.Run(); err != nil {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+
+	go func() {
+		select {
+		case <-sigCh:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	if isTUI && isatty() {
+		eventChan := make(chan core.EngineEvent, 100)
+		engineCfg.EventChan = eventChan
+
+		go func() {
+			if err := engine.Run(ctx); err != nil && err != context.Canceled {
+				pterm.Error.Printfln("Engine error: %v", err)
+			}
+		}()
+
+		if err := ui.Run(eventChan, engine); err != nil {
 			pterm.Warning.Printfln("TUI error: %v", err)
 		}
 	} else {
 		if !isTUI {
 			pterm.Info.Println("TUI disabled. Type help for commands.")
 		}
+
 		cmdCh := make(chan string)
 		go stdinReader(ctx, cmdCh)
 
-		sigCh := make(chan os.Signal, 1)
-		signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+		go func() {
+			if err := engine.Run(ctx); err != nil && err != context.Canceled {
+				pterm.Error.Printfln("Engine error: %v", err)
+			}
+		}()
 
-		stopped := false
-		for !stopped {
+		for {
 			select {
-			case sig := <-sigCh:
-				pterm.Warning.Printfln("Received %s, stopping...", utils.Red(sig.String()))
-				stopped = true
-
-			case <-h.StopCh:
-				stopped = true
-
 			case <-ctx.Done():
-				stopped = true
-
+				return nil
 			case input := <-cmdCh:
 				parts := strings.Fields(input)
 				if len(parts) == 0 {
 					continue
 				}
 				switch parts[0] {
-				case "status":
-					printInteractiveStatus(h)
+				case "status", "stats":
+					changes, clears := engine.Stats()
+					uptime := time.Since(engine.StartTime())
+					pterm.Success.Printfln("Watcher running. PID %d", os.Getpid())
+					pterm.Info.Printfln("Changes: %d  Clears: %d  Uptime: %v",
+						changes, clears, utils.FormatDuration(uptime))
+					var m runtime.MemStats
+					runtime.ReadMemStats(&m)
+					allocMB := float64(m.Alloc) / 1024 / 1024
+					memColor := pterm.FgGreen
+					if allocMB >= 500 {
+						memColor = pterm.FgRed
+					} else if allocMB >= 100 {
+						memColor = pterm.FgYellow
+					}
+					pterm.Info.Printfln("Memory: %s", memColor.Sprintf("%.1f MB", allocMB))
 				case "list", "config":
 					printInteractiveConfig(cfg)
-				case "stats":
-					printInteractiveStatus(h)
 				case "add":
-					if len(parts) < 2 {
-						fmt.Println("  Usage: add <route> [pattern]")
-						break
-					}
-					route := sanitizeRoute(parts[1])
-					if route == "" {
-						pterm.Warning.Println("  Invalid route.")
-						break
-					}
-					pattern := ""
-					if len(parts) > 2 {
-						pattern = parts[2]
-					}
-					cfg.Routes = append(cfg.Routes, route)
-					if pattern != "" {
-						cfg.Patterns = append(cfg.Patterns, pattern)
-					}
-					if err := mgr.SaveConfig(cfg, root); err != nil {
-						pterm.Error.Printfln("  Failed to save config: %v", err)
-					} else {
-						pterm.Success.Printfln("  Added route: %s", utils.Cyan(route))
-						h = restartWatcher(h, cfg, logFile)
-					}
+					pterm.Warning.Println("Use `drupal-watcher add` in a separate terminal, then restart.")
 				case "remove", "rm":
-					if len(parts) < 2 {
-						fmt.Println("  Usage: remove <route>")
-						break
-					}
-					route := sanitizeRoute(parts[1])
-					if route == "" {
-						pterm.Warning.Println("  Invalid route.")
-						break
-					}
-					newRoutes := make([]string, 0, len(cfg.Routes))
-					for _, r := range cfg.Routes {
-						if r != route {
-							newRoutes = append(newRoutes, r)
-						}
-					}
-					if len(newRoutes) == len(cfg.Routes) {
-						pterm.Warning.Printfln("  Route not found: %s", utils.Cyan(route))
-					} else {
-						cfg.Routes = newRoutes
-						if err := mgr.SaveConfig(cfg, root); err != nil {
-							pterm.Error.Printfln("  Failed to save config: %v", err)
-						} else {
-							pterm.Success.Printfln("  Removed route: %s", utils.Cyan(route))
-							h = restartWatcher(h, cfg, logFile)
-						}
-					}
+					pterm.Warning.Println("Use `drupal-watcher remove` in a separate terminal, then restart.")
 				case "reload":
-					newCfg, err := mgr.LoadConfig(root)
-					if err != nil {
-						pterm.Error.Printfln("  Failed to reload config: %v", err)
-					} else {
-						cfg = newCfg
-						h = restartWatcher(h, cfg, logFile)
-						pterm.Success.Println("  Config reloaded.")
-					}
+					pterm.Warning.Println("Restart the watcher to reload config.")
 				case "stop", "quit", "exit":
 					fmt.Println("  Stopping watcher...")
-					stopped = true
+					cancel()
+					return nil
 				case "help":
 					printInteractiveHelp()
 				default:
@@ -307,18 +289,6 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		}
 	}
 
-	watcher.Stop(h)
-
-	uptime := time.Since(h.Stats.StartTime)
-	changes := h.Stats.Changes.Load()
-	clears := h.Stats.Clears.Load()
-
-	if changes > 0 && clears == 0 {
-		pterm.Warning.Printfln("Watcher stopped. %d changes, %d clears, uptime %v", changes, clears, utils.FormatDuration(uptime))
-	} else {
-		pterm.Success.Printfln("Watcher stopped. %d changes, %d clears, uptime %v", changes, clears, utils.FormatDuration(uptime))
-	}
-	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 	return nil
 }
 
@@ -426,7 +396,6 @@ func CmdAdd(root string, args []string, mgr *config.Manager) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	// Parse route:pattern pairs or just routes
 	for _, arg := range args {
 		parts := strings.SplitN(arg, ":", 2)
 		route := sanitizeRoute(parts[0])
@@ -467,7 +436,6 @@ func CmdRemove(root string, args []string, mgr *config.Manager) error {
 			continue
 		}
 
-		// Remove route
 		newRoutes := make([]string, 0, len(cfg.Routes))
 		for _, r := range cfg.Routes {
 			if r != route {
@@ -479,7 +447,6 @@ func CmdRemove(root string, args []string, mgr *config.Manager) error {
 		}
 		cfg.Routes = newRoutes
 
-		// Remove pattern if specified
 		if len(parts) > 1 {
 			pattern := parts[1]
 			newPatterns := make([]string, 0, len(cfg.Patterns))
@@ -514,7 +481,7 @@ func CmdReset(root string, mgr *config.Manager) error {
 		return fmt.Errorf("failed to check PID: %w", err)
 	}
 
-	if pidStatus != nil { // PID exists (running or stale)
+	if pidStatus != nil {
 		spinner, _ := pterm.DefaultSpinner.Start("Stopping watcher...")
 		pidStr := fmt.Sprintf("%v", pidStatus)
 		var pid int
@@ -552,18 +519,63 @@ func CmdTui(root string, mgr *config.Manager) error {
 		return fmt.Errorf("%w", err)
 	}
 
-	eventCh := make(chan watcher.EventMsg, 100)
-	h, err := watcher.StartWithEvents(cfg, eventCh)
-	if err != nil {
-		return fmt.Errorf("failed to start watcher: %w", err)
-	}
-	defer watcher.Stop(h)
+	logger := adapters.NewSlogLogger("")
+	skipDirs := append(adapters.DefaultSkipDirs(), cfg.ExcludePatterns...)
 
-	p := tea.NewProgram(tui.NewModel(h), tea.WithAltScreen(), tea.WithMouseCellMotion())
-	if _, err := p.Run(); err != nil {
-		return err
+	fsnWatcher, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
+	if err != nil {
+		return fmt.Errorf("failed to create watcher: %w", err)
 	}
-	return nil
+	defer fsnWatcher.Close()
+
+	drushExec := adapters.NewDrushExecutor(cfg)
+
+	patternFilter := adapters.NewPatternFilter(cfg.Patterns)
+	excludeFilter := adapters.NewExcludeFilter(cfg.ExcludePatterns)
+	filters := []core.EventFilter{patternFilter, excludeFilter}
+
+	var resolvedSites []core.SiteInfo
+	for _, s := range cfg.GetResolvedSites() {
+		resolvedSites = append(resolvedSites, core.SiteInfo{Name: s.Name, URI: s.URI})
+	}
+
+	dr := ""
+	if cfg.DrupalRoot != nil {
+		dr = filepath.Join(root, *cfg.DrupalRoot)
+	}
+
+	eventChan := make(chan core.EngineEvent, 100)
+
+	engineCfg := core.EngineConfig{
+		Watcher:  fsnWatcher,
+		Executor: drushExec,
+		SiteExecutorFactory: func(site core.SiteInfo) core.CommandExecutor {
+			return adapters.NewSiteAwareDrushExecutor(cfg, site.Name, site.URI)
+		},
+		Filters:            filters,
+		PostProcessors:     []core.PostProcessor{},
+		EventChan:          eventChan,
+		Logger:             logger,
+		Debounce:           cfg.Debounce,
+		Patterns:           cfg.Patterns,
+		ExcludePatterns:    cfg.ExcludePatterns,
+		CommandsPerPattern: cfg.CommandsPerPattern,
+		ResolvedSites:      resolvedSites,
+		DrupalRoot:         dr,
+	}
+
+	engine := orchestrator.New(engineCfg)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := engine.Run(ctx); err != nil && err != context.Canceled {
+			pterm.Error.Printfln("Engine error: %v", err)
+		}
+	}()
+
+	return ui.Run(eventChan, engine)
 }
 
 func CmdHelp() {
@@ -592,34 +604,12 @@ Options:
 `)
 }
 
-func restartWatcher(h *watcher.Handle, cfg config.Config, logFile *os.File) *watcher.Handle {
-	spinner, _ := pterm.DefaultSpinner.Start("Restarting watcher...")
-	watcher.Stop(h)
-	time.Sleep(200 * time.Millisecond)
-	newH, err := watcher.Start(cfg, logFile)
-	if err != nil {
-		spinner.Fail("Failed to restart watcher")
-		pterm.Error.Printfln("%v", err)
-		return h
-	}
-	spinner.Success("Watcher restarted")
-	return newH
-}
-
 func isatty() bool {
 	if runtime.GOOS == "windows" {
 		return true
 	}
 	_, err := os.Stat("/dev/tty")
 	return err == nil
-}
-
-func printInteractiveStatus(h *watcher.Handle) {
-	uptime := time.Since(h.Stats.StartTime)
-	pterm.Success.Printfln("Watcher running. PID %d", os.Getpid())
-	pterm.Info.Printfln("Changes: %d  Clears: %d  Uptime: %v",
-		h.Stats.Changes.Load(), h.Stats.Clears.Load(), utils.FormatDuration(uptime))
-	utils.PrintMemStats(utils.GetMemStats(h.WatchCount.Load()))
 }
 
 func printInteractiveConfig(cfg config.Config) {
@@ -632,10 +622,6 @@ func printInteractiveHelp() {
 	fmt.Println("  Commands:")
 	fmt.Println("    status              Show watcher status, stats and memory")
 	fmt.Println("    list                Show current configuration")
-	fmt.Println("    stats               Show runtime statistics")
-	fmt.Println("    add <route>         Add a route to watch")
-	fmt.Println("    remove <route>      Remove a watched route")
-	fmt.Println("    reload              Reload config from file")
 	fmt.Println("    stop/quit/exit      Stop the watcher")
 	fmt.Println("    help                Show this help")
 	fmt.Println()
@@ -654,5 +640,3 @@ func IsPidRunning(pid int) bool {
 	}
 	return true
 }
-
-
