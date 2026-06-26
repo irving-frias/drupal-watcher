@@ -1,25 +1,27 @@
-#!/bin/bash
-# Drupal Watcher — binary launcher
-SOURCE="${BASH_SOURCE[0]}"
-while [ -h "$SOURCE" ]; do
-  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-BINARY="$DIR/drupal-watcher-go"
+#!/usr/bin/env php
+<?php
+$binDir = __DIR__;
+$binaryPath = $binDir . '/drupal-watcher-go';
 
-# Run setup: download binary if missing, ensure vendor/bin symlink
-php "$DIR/install.php"
-INSTALL_EXIT=$?
+if (!file_exists($binaryPath) || !is_executable($binaryPath)) {
+    require $binDir . '/install.php';
+}
 
-if [ ! -x "$BINARY" ]; then
-  echo "Error: Drupal Watcher binary not found at $BINARY" >&2
-  if [ $INSTALL_EXIT -ne 0 ]; then
-    echo "The install script failed — check network connectivity or install Go manually." >&2
-  fi
-  echo "Download manually from: https://github.com/irving-frias/drupal-watcher/releases" >&2
-  exit 1
-fi
+if (!file_exists($binaryPath) || !is_executable($binaryPath)) {
+    fwrite(STDERR, "Error: Drupal Watcher binary not found at {$binaryPath}\n");
+    fwrite(STDERR, "Download manually from: https://github.com/irving-frias/drupal-watcher/releases\n");
+    exit(1);
+}
 
-exec "$BINARY" "$@"
+$args = array_slice($argv, 1);
+
+if (function_exists('pcntl_exec')) {
+    pcntl_exec($binaryPath, $args);
+}
+
+$cmd = $binaryPath;
+foreach ($args as $arg) {
+    $cmd .= ' ' . escapeshellarg($arg);
+}
+passthru($cmd, $exitCode);
+exit($exitCode);

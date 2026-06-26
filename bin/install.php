@@ -5,17 +5,15 @@
  *
  * Called via:
  *   - Composer post-install-cmd / post-update-cmd
- *   - bin/drupal-watcher shell launcher (first-run download)
+ *   - bin/drupal-watcher (PHP launcher, via require)
  *
- * vendor/bin/drupal-watcher is managed by Composer via the "bin" field
- * in composer.json. This script only handles binary download.
+ * Uses return instead of exit so it can be safely require'd.
  */
 
 $installDir = __DIR__;
 $packageJson = $installDir . '/../composer.json';
 $binaryPath = $installDir . '/drupal-watcher-go';
 
-// Determine vendor/bin directory (used for cleanup when package is removed)
 $vendorBin = getenv('COMPOSER_RUNTIME_BIN_DIR');
 if ($vendorBin === false || !is_dir($vendorBin)) {
 	$vendorBin = null;
@@ -32,7 +30,6 @@ if ($vendorBin === false || !is_dir($vendorBin)) {
 	}
 }
 
-// ─── Step 1: if package is not removed, clean up ───────────────────────────
 if (!file_exists($packageJson)) {
 	if ($vendorBin) {
 		$proxyPath = $vendorBin . '/drupal-watcher';
@@ -43,16 +40,13 @@ if (!file_exists($packageJson)) {
 	if (file_exists($binaryPath)) {
 		@unlink($binaryPath);
 	}
-	exit(0);
+	return;
 }
 
-// Read version from our composer.json
 $composerMeta = json_decode(file_get_contents($packageJson), true);
 $expectedVersion = $composerMeta['extra']['drupal-watcher-version'] ?? '1.0.0';
 
-// ─── Step 3: check if binary needs download ────────────────────────────────
 $needsDownload = true;
-
 if (file_exists($binaryPath) && is_executable($binaryPath)) {
 	$versionFile = $installDir . '/.binary-version';
 	if (file_exists($versionFile) && trim(file_get_contents($versionFile)) === $expectedVersion) {
@@ -61,10 +55,9 @@ if (file_exists($binaryPath) && is_executable($binaryPath)) {
 }
 
 if (!$needsDownload) {
-	exit(0);
+	return;
 }
 
-// ─── Step 4: download binary from GitHub Releases ──────────────────────────
 $repo = 'irving-frias/drupal-watcher';
 
 $version = getenv('DRUPAL_WATCHER_VERSION');
@@ -131,16 +124,15 @@ $context = stream_context_create([
 $data = @file_get_contents($url, false, $context);
 if ($data === false) {
 	echo "Warning: download failed from {$url}\n";
-	echo "The launcher is still available at vendor/bin/drupal-watcher.\n";
 	echo "To resolve: install Go locally or download the binary manually from:\n";
 	echo "  https://github.com/{$repo}/releases\n";
-	exit(1);
+	return;
 }
 
 if ($isWindows) {
 	if (!class_exists('ZipArchive')) {
 		echo "Error: Zip extension required. Unzip manually from: {$url}\n";
-		exit(1);
+		return;
 	}
 	$zipPath = $installDir . '/drupal-watcher-tmp.zip';
 	file_put_contents($zipPath, $data);
@@ -155,7 +147,7 @@ if ($isWindows) {
 	$decompressed = gzdecode($data);
 	if ($decompressed === false) {
 		echo "Error: failed to decompress {$archiveName}\n";
-		exit(1);
+		return;
 	}
 	file_put_contents($binaryPath, $decompressed);
 }
