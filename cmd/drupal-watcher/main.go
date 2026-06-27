@@ -32,7 +32,7 @@ func main() {
 	}
 
 	root := "."
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") && !isCommand(args[0]) {
 		root = args[0]
 	}
 
@@ -58,6 +58,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func isCommand(s string) bool {
+	return s == "start" || s == "watch"
 }
 
 func printUsage() {
