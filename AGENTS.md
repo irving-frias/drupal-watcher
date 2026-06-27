@@ -5,21 +5,17 @@
 - **Fresh test**: `go test -count=1 ./...`
 - **Vet**: `go vet ./...`
 - **Build**: `go build -o drupal-watcher ./cmd/drupal-watcher`
-- **Build modular**: `go build -o modular-watcher ./cmd/modular`
 - **Run**: `./bin/drupal-watcher <command>` or `go run ./cmd/drupal-watcher <command>`
 
 ## Project structure
 - `bin/drupal-watcher` — PHP launcher (`#!/usr/bin/env php`), calls `install.php` then execs Go binary
 - `bin/install.php` — Binary downloader (vendor/bin entry managed by Composer via the `bin` field in `composer.json`)
-- `cmd/drupal-watcher/main.go` — Legacy entry point, arg parsing (`parseFlags`), dispatch (switch-based)
-- `cmd/modular/main.go` — Modular entry point with DI container + module system (recommended for new features)
+- `cmd/drupal-watcher/main.go` — Modular entry point with DI container + module system
 - `internal/app/` — Module system (`Container`, `Module` interface, `App` lifecycle, `EventBus`)
 - `internal/app/modules/` — Built-in modules (config, watcher, executor, orchestrator, ui)
 - `internal/config/config.go` — `Manager` struct with per-root cache, config load/save, Drupal root detection, PID management
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
-- `internal/orchestrator/engine.go` — Legacy engine (direct EventChan)
-- `internal/app/modules/orchestrator/engine.go` — New engine with EventBus
-- `internal/cli/cli.go` — All CLI commands (`CmdStart`, `CmdList`, `CmdStatus`, etc.)
+- `internal/app/modules/orchestrator/engine.go` — Engine with EventBus
 - `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages)
 - `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `PostProcessor`)
 - `pkg/adapters/` — Adapter implementations (fsnotify, drush, regex filters, logger)
@@ -49,7 +45,7 @@
 - `cache.clear` — Drush cache clear executed
 - `error` — Watcher or engine error
 
-## Key types (legacy)
+## Key types
 - `config.Config` — Main configuration struct with all watcher settings
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
