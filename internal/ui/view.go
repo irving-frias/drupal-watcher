@@ -104,7 +104,7 @@ func (m *Model) renderEvents() string {
 	}
 
 	filter := m.siteFilter
-	wrap := lipgloss.NewStyle().Width(m.viewport.Width)
+	maxW := m.viewport.Width
 
 	var lines []string
 	for _, e := range m.events {
@@ -117,7 +117,11 @@ func (m *Model) renderEvents() string {
 		if e.Count > 1 {
 			content = fmt.Sprintf("%dx %s", e.Count, e.Content)
 		}
-		lines = append(lines, wrap.Render(fmt.Sprintf("%s %s %s", ts, icon, content)))
+		line := fmt.Sprintf("%s %s %s", ts, icon, content)
+		if lipgloss.Width(line) > maxW {
+			line = lipgloss.NewStyle().Width(maxW).MaxWidth(maxW).Render(line)
+		}
+		lines = append(lines, line)
 	}
 
 	if len(lines) == 0 {
