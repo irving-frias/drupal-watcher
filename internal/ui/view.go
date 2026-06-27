@@ -127,7 +127,18 @@ func (m *Model) renderEvents() string {
 			content = fmt.Sprintf("%dx %s", e.Count, e.Content)
 		}
 		line := fmt.Sprintf("%s %s %s", ts, icon, content)
-		lines = append(lines, truncateANSI(line, maxW))
+		if ansi.StringWidth(line) > maxW {
+			wrapped := ansi.Wrap(line, maxW, "")
+			parts := strings.Split(wrapped, "\n")
+			for i, p := range parts {
+				if i > 0 {
+					p = "  " + p
+				}
+				lines = append(lines, p)
+			}
+		} else {
+			lines = append(lines, line)
+		}
 	}
 
 	if len(lines) == 0 {
