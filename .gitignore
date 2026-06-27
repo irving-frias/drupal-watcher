@@ -4,6 +4,7 @@ vendor/
 # Build output
 bin/drupal-watcher-go
 /drupal-watcher
+/modular
 
 # Runtime
 watcher.config.json
