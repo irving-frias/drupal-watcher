@@ -85,11 +85,14 @@ func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 	if exts == nil {
 		return nil
 	}
+
+	phpcsStd := cfg.GetPhpCsStandard()
+
 	for ext := range exts {
 		switch ext {
 		case ".php":
-			if std := cfg.GetPhpCsStandard(); std != "" {
-				m[ext] = adapters.NewPhpCsLintChecker(std)
+			if phpcsStd != "" {
+				m[ext] = adapters.NewPhpCsLintChecker(phpcsStd)
 			} else {
 				m[ext] = adapters.NewPhpLintChecker()
 			}
@@ -97,6 +100,15 @@ func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 			m[ext] = adapters.NewYamlLintChecker()
 		}
 	}
+
+	if phpcsStd != "" {
+		for _, ext := range []string{".css", ".js"} {
+			if _, ok := m[ext]; !ok {
+				m[ext] = adapters.NewPhpCsLintChecker(phpcsStd)
+			}
+		}
+	}
+
 	return m
 }
 
