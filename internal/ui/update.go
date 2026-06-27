@@ -176,9 +176,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Style:     icon,
 			})
 		case core.EventError:
+			content := fmt.Sprintf("Error: %v", evt.Error)
+			if evt.File != "" {
+				content = fmt.Sprintf("Error in %s: %v", evt.File, evt.Error)
+			}
 			m.pushEvent(eventLine{
 				Timestamp: ts,
-				Content:   fmt.Sprintf("Error: %v", evt.Error),
+				Content:   content,
 				Style:     errorStyle,
 			})
 		}

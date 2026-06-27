@@ -45,6 +45,8 @@ The TUI opens automatically. Events appear in real-time, and you can type comman
   │ 10:00:01  ℹ  Waiting for file changes...                     │
   │ 10:02:15  ℹ  Change detected: docroot/modules/custom/foo.module │
   │ 10:02:16  ✔  drush cc plugin (312ms, exit 0)                │
+  │ 10:03:22  ✖  Error in docroot/modules/custom/bad.php:       │
+  │            PHP Parse error: syntax error, unexpected ...     │
   └──────────────────────────────────────────────────────────────┘
 
   ┌──────────────────────────────────────────────────────────────┐
@@ -172,8 +174,8 @@ When running with `--no-tui`, type commands at the prompt:
   "skipLint": false,
   "lintCommands": {
     ".php": "php -l",
-    ".yml": "php -l",
-    ".yaml": "php -l"
+    ".yml": "yaml",
+    ".yaml": "yaml"
   },
   "watchMode": "auto",
   "pollInterval": 2000
@@ -193,7 +195,7 @@ When running with `--no-tui`, type commands at the prompt:
 | `excludePatterns`     | Path substrings to exclude from watching                     |
 | `Sites`               | Site names to watch in multi-site setups (resolved via `drush/sites.yml`) |
 | `skipLint`            | Disable lint checking before cache clear                     |
-| `lintCommands`        | Per-extension lint commands (default: `php -l` for PHP/YAML) |
+| `lintCommands`        | Per-extension lint commands (default: `php -l` for PHP, Go yaml parser for YAML). Only checks files inside `routes`. |
 | `watchMode`           | File watching mode: `auto`, `fsnotify`, `poll`, `hybrid`     |
 | `pollInterval`        | Polling interval in ms (default 2000, only used in poll/hybrid modes) |
 
@@ -215,7 +217,7 @@ Config via `watchMode` in `watcher.config.json` or override per session. Polling
 1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
 2. Uses `fsnotify` to watch all subdirectories under the configured routes (falls back to polling if fsnotify fails, or use hybrid mode for both)
 3. When files change, debounces (default 800ms) collecting all changes into a batch
-4. **PHP and YAML files are linted** before running drush (`php -l` for PHP, Go yaml parser for YAML). If linting fails, the cache clear is skipped and a prominent error appears in the TUI.
+4. **PHP and YAML files are linted** before running drush (`php -l` for PHP, Go yaml parser for YAML). Only files inside watched `routes` are checked. If linting fails, the cache clear is skipped and the error (with file path) is displayed in the TUI.
 5. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
 6. If any change requires a full rebuild (`cr`), it overrides all other commands
 7. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
@@ -632,7 +634,7 @@ app.Start()
 |---|---|---|---|
 | `file.change` | Orchestrator | `core.EngineEvent` | TUI, notifications |
 | `cache.clear` | Orchestrator | `core.EngineEvent` | TUI, notifications |
-| `error` | Orchestrator | `core.EngineEvent` | TUI |
+| `error` | Orchestrator | `core.EngineEvent` | TUI (lint failures, watcher errors) |
 | `engine.start` | Orchestrator | (empty) | lifecycle hooks |
 | `engine.stop` | Orchestrator | (empty) | lifecycle hooks |
 
