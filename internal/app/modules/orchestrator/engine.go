@@ -31,6 +31,7 @@ type Engine struct {
 	CommandsPerPattern map[string]string
 	ResolvedSites      []core.SiteInfo
 	DrupalRoot         string
+	Routes             []string
 
 	pending atomic.Bool
 
@@ -64,6 +65,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		CommandsPerPattern: cfg.CommandsPerPattern,
 		ResolvedSites:      cfg.ResolvedSites,
 		DrupalRoot:         cfg.DrupalRoot,
+		Routes:             cfg.Routes,
 		changedFiles:       make(map[string]struct{}),
 		startTime:          time.Now(),
 	}
@@ -220,6 +222,15 @@ func (e *Engine) processBatch() {
 	}
 }
 
+func (e *Engine) isWatchedFile(path string) bool {
+	for _, route := range e.Routes {
+		if strings.HasPrefix(path, route) {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) lintFiles(files map[string]struct{}) *core.LintResult {
 	var (
 		mu     sync.Mutex
@@ -227,6 +238,9 @@ func (e *Engine) lintFiles(files map[string]struct{}) *core.LintResult {
 		fail   *core.LintResult
 	)
 	for f := range files {
+		if !e.isWatchedFile(f) {
+			continue
+		}
 		ext := filepath.Ext(f)
 		if ext == ".info" {
 			ext = ".yml"
@@ -391,6 +405,7 @@ type EngineConfig struct {
 	CommandsPerPattern  map[string]string
 	ResolvedSites       []core.SiteInfo
 	DrupalRoot          string
+	Routes              []string
 }
 
 func ValidateEngineConfig(cfg EngineConfig) EngineConfig {

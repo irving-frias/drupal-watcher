@@ -54,6 +54,7 @@ func (m *Module) Init(container *app.Container) error {
 		CommandsPerPattern: cfg.CommandsPerPattern,
 		ResolvedSites:      cfg.GetResolvedSites(),
 		DrupalRoot:         dr,
+		Routes:             cfg.Routes,
 	})
 
 	container.Set(common.SvcOrchestrator, m.engine)
