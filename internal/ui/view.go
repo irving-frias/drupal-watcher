@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func sparkline(vals []float64, max int) string {
@@ -98,6 +99,14 @@ func (m *Model) renderStatus() string {
 	)
 }
 
+func truncateANSI(s string, maxW int) string {
+	w := ansi.StringWidth(s)
+	if w <= maxW {
+		return s
+	}
+	return ansi.Truncate(s, maxW, "")
+}
+
 func (m *Model) renderEvents() string {
 	if len(m.events) == 0 {
 		return dim.Render("Waiting for file changes...")
@@ -118,10 +127,7 @@ func (m *Model) renderEvents() string {
 			content = fmt.Sprintf("%dx %s", e.Count, e.Content)
 		}
 		line := fmt.Sprintf("%s %s %s", ts, icon, content)
-		if lipgloss.Width(line) > maxW {
-			line = lipgloss.NewStyle().Width(maxW).MaxWidth(maxW).Render(line)
-		}
-		lines = append(lines, line)
+		lines = append(lines, truncateANSI(line, maxW))
 	}
 
 	if len(lines) == 0 {
