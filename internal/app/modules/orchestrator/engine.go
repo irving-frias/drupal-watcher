@@ -224,7 +224,10 @@ func (e *Engine) processBatch() {
 
 func (e *Engine) isWatchedFile(path string) bool {
 	for _, route := range e.Routes {
-		if strings.HasPrefix(path, route) {
+		if !strings.HasPrefix(path, route) {
+			continue
+		}
+		if len(path) == len(route) || path[len(route)] == filepath.Separator {
 			return true
 		}
 	}
