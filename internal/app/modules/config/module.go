@@ -35,13 +35,14 @@ func (m *Module) Init(container *app.Container) error {
 	container.Set(common.SvcConfig, m.cfg)
 	container.Set(common.SvcWorkDir, m.WorkDir)
 
-	dr := m.WorkDir
+	dr := resolveAbs(m.WorkDir)
 	if m.cfg.DrupalRoot != nil {
-		dr = filepath.Join(m.WorkDir, *m.cfg.DrupalRoot)
+		dr = filepath.Join(dr, *m.cfg.DrupalRoot)
 	}
 	m.DrupalRoot = dr
 	container.Set(common.SvcDrupalRoot, dr)
 
+	m.normalizeRoutes()
 	m.resolveSites(dr)
 
 	return nil
@@ -94,3 +95,17 @@ func (m *Module) resolveSites(drupalRoot string) {
 }
 
 func (m *Module) GetConfig() *config.Config { return m.cfg }
+
+func resolveAbs(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	return abs
+}
+
+func (m *Module) normalizeRoutes() {
+	for i, r := range m.cfg.Routes {
+		m.cfg.Routes[i] = resolveAbs(r)
+	}
+}
