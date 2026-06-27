@@ -112,6 +112,14 @@ func (m *Manager) DetectDrupalRoot(root string) *string {
 		return e.Root
 	}
 
+	if dirExists(filepath.Join(r, "core")) ||
+		dirExists(filepath.Join(r, "modules")) ||
+		dirExists(filepath.Join(r, "themes")) ||
+		fileExists(filepath.Join(r, "index.php")) {
+		m.cache[r] = &cacheEntry{Root: &r}
+		return &r
+	}
+
 	for _, dir := range utils.PossibleDocroots {
 		fullPath := filepath.Join(r, dir)
 		info, err := os.Stat(fullPath)
