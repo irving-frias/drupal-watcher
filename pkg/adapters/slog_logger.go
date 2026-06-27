@@ -1,6 +1,7 @@
 package adapters
 
 import (
+	"io"
 	"log/slog"
 	"os"
 )
@@ -19,5 +20,11 @@ func NewSlogLogger(logFile string) *slog.Logger {
 	}
 	return slog.New(slog.NewTextHandler(f, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
+	}))
+}
+
+func NewDiscardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{
+		Level: slog.LevelError,
 	}))
 }

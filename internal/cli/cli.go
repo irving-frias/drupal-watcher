@@ -147,7 +147,6 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		}
 	}
 
-	logger := adapters.NewSlogLogger("")
 	skipDirs := append(adapters.DefaultSkipDirs(), cfg.ExcludePatterns...)
 
 	fsnWatcher, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
@@ -172,6 +171,18 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		dr = filepath.Join(root, *cfg.DrupalRoot)
 	}
 
+	isTUI := true
+	if nt, ok := flags["no-tui"].(bool); ok && nt {
+		isTUI = false
+	}
+
+	var eventChan chan core.EngineEvent
+	logger := adapters.NewSlogLogger("")
+	if isTUI && isatty() {
+		eventChan = make(chan core.EngineEvent, 100)
+		logger = adapters.NewDiscardLogger()
+	}
+
 	engineCfg := core.EngineConfig{
 		Watcher:  fsnWatcher,
 		Executor: drushExec,
@@ -180,7 +191,7 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 		},
 		Filters:            filters,
 		PostProcessors:     []core.PostProcessor{},
-		EventChan:          nil,
+		EventChan:          eventChan,
 		Logger:             logger,
 		Debounce:           cfg.Debounce,
 		Patterns:           cfg.Patterns,
@@ -195,11 +206,6 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	pterm.Info.Printfln("Routes: %s", utils.Cyan(strings.Join(cfg.Routes, ", ")))
 	pterm.Info.Printfln("Patterns: %s", utils.Cyan(strings.Join(cfg.Patterns, ", ")))
 	pterm.Success.Printfln("Watcher started. PID %d.", os.Getpid())
-
-	isTUI := true
-	if nt, ok := flags["no-tui"].(bool); ok && nt {
-		isTUI = false
-	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -216,9 +222,6 @@ func CmdStart(ctx context.Context, root string, flags map[string]interface{}, mg
 	}()
 
 	if isTUI && isatty() {
-		eventChan := make(chan core.EngineEvent, 100)
-		engineCfg.EventChan = eventChan
-
 		go func() {
 			if err := engine.Run(ctx); err != nil && err != context.Canceled {
 				pterm.Error.Printfln("Engine error: %v", err)
