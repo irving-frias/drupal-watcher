@@ -101,10 +101,24 @@ func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 		}
 	}
 
+	phpLike := map[string]bool{".php": true, ".module": true, ".inc": true, ".theme": true, ".install": true, ".profile": true, ".engine": true}
+
 	if phpcsStd != "" {
 		for _, ext := range []string{".css", ".js"} {
 			if _, ok := m[ext]; !ok {
 				m[ext] = adapters.NewPhpCsLintChecker(phpcsStd)
+			}
+		}
+	}
+
+	for _, p := range cfg.Patterns {
+		if phpLike[p] {
+			if _, ok := m[p]; !ok {
+				if phpcsStd != "" {
+					m[p] = adapters.NewPhpCsLintChecker(phpcsStd)
+				} else {
+					m[p] = adapters.NewPhpLintChecker()
+				}
 			}
 		}
 	}
