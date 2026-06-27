@@ -119,6 +119,9 @@ func main() {
 			os.Exit(1)
 		}
 
+	case "version":
+		fmt.Printf("drupal-watcher %s (go %s)\n", cli.PkgVersion(), strings.TrimPrefix(runtime.Version(), "go"))
+
 	case "help", "":
 		cli.CmdHelp()
 

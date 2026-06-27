@@ -66,6 +66,7 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | `remove` / `rm` <route>    | Remove route and/or pattern            |
 | `restart`                  | Restart the watcher                    |
 | `stop` / `reset`           | Stop the watcher and clear PID         |
+| `version`                  | Show version and Go runtime            |
 | `help`                     | Show usage information                 |
 
 ## Options
