@@ -17,8 +17,8 @@
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
 - `internal/app/modules/orchestrator/engine.go` — Engine with EventBus
 - `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages)
-- `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `PostProcessor`)
-- `pkg/adapters/` — Adapter implementations (fsnotify, drush, regex filters, logger)
+- `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `PostProcessor`, `LintChecker`)
+- `pkg/adapters/` — Adapter implementations (fsnotify, polling_watcher, hybrid_watcher, drush, regex filters, php_lint, yaml_lint, logger)
 
 ## Guidelines
 - **All user-facing messages in English**
@@ -28,7 +28,7 @@
 - New features should use the module system (`internal/app/`) with `app.Module` interface
 - Modules register services in the `Container` via `Init()`; services are identified by `common.ServiceName`
 - EventBus (`internal/app/eventbus/`) decouples modules — new consumers subscribe to topics
-- PID/starttime files stored in project root (`cwd/`) by default, or in `root` if specified
+- PID/starttime files stored in `~/.cache/drupal-watcher/.drupal-watcher-<hash>.pid` with `0600` perms (hash based on project absolute path, supports multiple projects)
 - **Releases**: before each release, update `composer.json` → `extra.drupal-watcher-version`. The `build.yml` workflow reads that version, creates the tag, and auto-bumps the patch post-release
 
 ## Service names (common.ServiceName)
@@ -46,12 +46,14 @@
 - `error` — Watcher or engine error
 
 ## Key types
-- `config.Config` — Main configuration struct with all watcher settings
+- `config.Config` — Main configuration struct with all watcher settings (includes `SkipLint`, `LintCommands`, `WatchMode`, `PollInterval`)
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
 - `drush.DrushResult` — Result of a drush command execution
-- `core.EngineConfig` — Dependency injection struct for the engine
+- `core.EngineConfig` — Dependency injection struct for the engine (includes `LintCheckers`, `SkipLint`)
 - `core.EngineEvent` — Event emitted on file changes / cache clears
+- `core.LintChecker` — Interface for syntax checking before cache clear
+- `core.LintResult` — Result of a lint check (file path + error)
 
 ## Migration notes (from TS to Go)
 - Replaced `bun:test` with `go test`

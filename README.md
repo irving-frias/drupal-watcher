@@ -168,7 +168,15 @@ When running with `--no-tui`, type commands at the prompt:
     ".css": "cc css-js",
     ".js": "cc css-js"
   },
-  "postClearCommands": []
+  "postClearCommands": [],
+  "skipLint": false,
+  "lintCommands": {
+    ".php": "php -l",
+    ".yml": "php -l",
+    ".yaml": "php -l"
+  },
+  "watchMode": "auto",
+  "pollInterval": 2000
 }
 ```
 
@@ -184,18 +192,34 @@ When running with `--no-tui`, type commands at the prompt:
 | `postClearCommands`   | Shell commands to run after each cache clear                 |
 | `excludePatterns`     | Path substrings to exclude from watching                     |
 | `Sites`               | Site names to watch in multi-site setups (resolved via `drush/sites.yml`) |
+| `skipLint`            | Disable lint checking before cache clear                     |
+| `lintCommands`        | Per-extension lint commands (default: `php -l` for PHP/YAML) |
+| `watchMode`           | File watching mode: `auto`, `fsnotify`, `poll`, `hybrid`     |
+| `pollInterval`        | Polling interval in ms (default 2000, only used in poll/hybrid modes) |
 
 **commandsPerPattern** maps file extensions to drush commands. The most specific match wins (e.g., `.info.yml` matches before `.yml`). Falls back to `cr` if no pattern matches.
+
+### Watch modes
+
+| Mode | Description |
+|---|---|
+| `auto` (default) | Tries fsnotify first; falls back to polling if OS limits are hit |
+| `fsnotify` | Native file system events only (lowest latency) |
+| `poll` | Periodic file tree scan at `pollInterval` (works around OS limits) |
+| `hybrid` | Runs both fsnotify and polling simultaneously; events are deduplicated within a 1s window. Provides the reliability of polling with the low latency of fsnotify. |
+
+Config via `watchMode` in `watcher.config.json` or override per session. Polling mode is useful in large projects that exceed `fs.inotify.max_user_watches` on Linux, or when running in shared filesystems like NFS.
 
 ## How it works
 
 1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
-2. Uses `fsnotify` to watch all subdirectories under the configured routes
+2. Uses `fsnotify` to watch all subdirectories under the configured routes (falls back to polling if fsnotify fails, or use hybrid mode for both)
 3. When files change, debounces (default 800ms) collecting all changes into a batch
-4. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
-5. If any change requires a full rebuild (`cr`), it overrides all other commands
-6. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
-7. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
+4. **PHP and YAML files are linted** before running drush (`php -l` for PHP, Go yaml parser for YAML). If linting fails, the cache clear is skipped and a prominent error appears in the TUI.
+5. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
+6. If any change requires a full rebuild (`cr`), it overrides all other commands
+7. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
+8. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
 
 ### Drush optimizations
 
@@ -340,7 +364,7 @@ Events in the TUI are tagged with the site name:
 
 ## PID management
 
-The watcher writes a PID file (`.drupal-watcher.pid`) to prevent multiple instances. If the process crashes, `drupal-watcher stop` or `drupal-watcher reset` cleans up stale PID files.
+The watcher writes a PID file to `~/.cache/drupal-watcher/.drupal-watcher-<project-hash>.pid` (`0600` permissions) to prevent multiple instances. The filename includes a hash of the project root, so you can run the watcher in multiple projects without conflicts. If the process crashes, stale PID files are cleaned up automatically on the next `start`.
 
 ## Architecture
 
@@ -382,8 +406,12 @@ pkg/
     models.go            → FileEvent, ExecutionResult, EngineEvent, SiteInfo
   adapters/
     fsnotify_watcher.go  → core.Watcher via fsnotify
+    polling_watcher.go   → core.Watcher via periodic file tree scan
+    hybrid_watcher.go    → core.Watcher (fsnotify + polling, deduped)
     drush_executor.go    → core.CommandExecutor via drush
     regex_filter.go      → Pattern/Exclude/Dotfile filters
+    php_lint.go          → core.LintChecker via php -l
+    yaml_lint.go         → core.LintChecker via Go yaml parser
     slog_logger.go       → Structured logger factory
 ```
 
@@ -411,19 +439,29 @@ type PostProcessor interface {
     Name() string
     Process(ctx context.Context, event FileEvent, result ExecutionResult) error
 }
+
+type LintChecker interface {
+    Lint(filePath string) *LintResult
+}
+
+type LintResult struct {
+    File  string
+    Error string
+}
 ```
 
 ### Engine event loop
 
 The orchestrator (`internal/app/modules/orchestrator/engine.go`) runs the central pipeline:
 
-1. Watcher emits raw `FileEvent` on a channel
+1. Watcher emits raw `FileEvent` on a channel (via fsnotify, polling, or hybrid)
 2. All `EventFilter` implementations decide if the event should be processed
 3. Debounce timer groups rapid changes into a single batch
-4. Matching file extensions are resolved to drush commands via `CommandsPerPattern`
-5. `CommandExecutor` runs the resolved commands
-6. All `PostProcessor` implementations run sequentially with the execution result
-7. `EngineEvent` is published to the EventBus on `file.change` and `cache.clear` topics
+4. **Lint check**: each changed file is checked by its `LintChecker` (`.php` → `php -l`, `.yml` → Go yaml parser). If any file fails, the batch is skipped and an `error` EventBus event is published.
+5. Matching file extensions are resolved to drush commands via `CommandsPerPattern`
+6. `CommandExecutor` runs the resolved commands
+7. All `PostProcessor` implementations run sequentially with the execution result
+8. `EngineEvent` is published to the EventBus on `file.change` and `cache.clear` topics
 
 ---
 
