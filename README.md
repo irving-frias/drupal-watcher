@@ -39,7 +39,7 @@ The TUI opens automatically. Events appear in real-time, and you can type comman
 
 ```
   ● drupal-watcher  PID: 12345  Uptime: 5m
-  Memory: 2.1 MB  |  Kernel watches: 630  |  Changes: 14  |  Clears: 3
+  Memory: 2.1 MB ▂▃▄▅▆▇█  |  Changes: 14  |  Clears: 3
 
   ┌──────────────────────────────────────────────────────────────┐
   │ 10:00:01  ℹ  Waiting for file changes...                     │
@@ -59,7 +59,7 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | Command                    | Description                            |
 |----------------------------|----------------------------------------|
 | `start`                    | Start watching (opens TUI by default)  |
-| `tui`                      | Terminal UI (experimental)             |
+| `tui`                      | Terminal UI (default for `start`)      |
 | `status`                   | Show running status and uptime         |
 | `list` / `config`          | Display current configuration          |
 | `add` <route> [pattern]    | Add route and/or pattern to watch      |
@@ -94,16 +94,7 @@ Sends a native OS desktop notification each time a cache clear completes:
 vendor/bin/drupal-watcher start --notify
 ```
 
-**Per OS:**
-
-| OS | Method | Requirements |
-|---|---|---|
-| **macOS** | `osascript` | None (built-in) |
-| **Linux** (native) | `notify-send` | `libnotify-bin` (Debian/Ubuntu) or `libnotify` (Fedora/Arch) |
-| **WSL** | `powershell.exe` → Windows Toast | None (calls host PowerShell) |
-| **Windows** | `powershell` → ToastNotificationManager | None (built-in) |
-
-WSL is auto-detected by reading `/proc/sys/kernel/osrelease` and uses `powershell.exe` to show the native Windows 10/11 Toast. No configuration required.
+Uses the `beeep` Go library for cross-platform desktop notifications. No OS-specific configuration required — works on macOS (via `osascript`), Linux (via `notify-send` or D-Bus), and Windows (via Toast notifications).
 
 ### --root
 
@@ -348,16 +339,52 @@ Events in the TUI are tagged with the site name:
 
 ## PID management
 
-The watcher writes a PID file (`watcher.pid`) to prevent multiple instances. If the process crashes, `drupal-watcher stop` or `drupal-watcher reset` cleans up stale PID files.
+The watcher writes a PID file (`.drupal-watcher.pid`) to prevent multiple instances. If the process crashes, `drupal-watcher stop` or `drupal-watcher reset` cleans up stale PID files.
 
 ## Architecture
 
-The codebase uses a plugin-style architecture. Core interfaces live in `pkg/core/`, implementations in `pkg/adapters/`, and the event loop orchestrator in `internal/orchestrator/`. Adding new features (Slack, Redis, custom scripts) requires zero changes to the orchestrator — just implement an interface.
+The codebase uses a **hexagonal (ports & adapters)** architecture with two layers:
+
+| Layer | Location | Purpose |
+|---|---|---|
+| **Domain** | `pkg/core/` | Interfaces and models — the "ports" |
+| **Adapters** | `pkg/adapters/` | Implementations of domain interfaces — the "adapters" |
+| **Legacy entry** | `cmd/drupal-watcher/` | Full-featured CLI with manual wiring |
+| **Modular entry** | `cmd/modular/` | DI container + module system (recommended for new features) |
 
 ```
 cmd/
-  drupal-watcher/        → CLI entry point (flag parsing, command dispatch)
-  watcher/               → Thin DI entry point (pure dependency injection)
+  drupal-watcher/        → Binary (legacy CLI — manual wiring, full feature set)
+  watcher/               → Binary (thin DI, no CLI commands)
+  modular/               → Binary (module system with DI container + EventBus)
+
+internal/
+  app/
+    app.go               → App lifecycle (Start/Stop/Done)
+    container.go          → DI container (Set/Get/MustGet)
+    module.go            → Module interface
+    common/types.go      → ServiceName constants
+    eventbus/
+      bus.go             → Pub/sub event bus (async, topic-based)
+    modules/
+      config/            → Config module (loads watcher.config.json, stores in container)
+      watcher/           → Watcher module (creates FSNotifyWatcher from config)
+      executor/          → Executor module (creates DrushExecutor from config)
+      orchestrator/      → Orchestrator module (engine with EventBus, starts in goroutine)
+      ui/                → UI module (runs Bubble Tea TUI, blocks until quit)
+        providers/tui/   → TUI bridge (EventBus → EngineEvent channel)
+
+  orchestrator/          → Legacy engine (direct EventChan, no EventBus)
+  hooks/
+    builtin/
+      drush_clear.go     → Default post-execution hook
+    examples/
+      slack.go           → Demo: Slack webhook notifier
+  ui/                    → Bubble Tea TUI (model, view, update, styles)
+  config/                → Config management, Drupal root detection, PID files
+  drush/                 → Drush resolution, execution, health checks
+  cli/                   → CLI command implementations (uses legacy orchestrator)
+  utils/                 → Color helpers, format utilities
 
 pkg/
   core/
@@ -368,28 +395,9 @@ pkg/
     drush_executor.go    → core.CommandExecutor via drush
     regex_filter.go      → Pattern/Exclude/Dotfile filters
     slog_logger.go       → Structured logger factory
-
-internal/
-  orchestrator/
-    engine.go            → Central engine: debounce, filter pipeline, execution, hooks
-  hooks/
-    builtin/
-      drush_clear.go     → Default post-execution hook
-    examples/
-      slack.go           → Demo: Slack webhook notifier
-  ui/
-    model.go             → BubbleTea TUI model
-    view.go             → TUI rendering
-    update.go           → TUI event handling
-    styles.go           → TUI lipgloss styles
-    tui.go              → Public Run() function
-  config/                → Config management, Drupal root detection, PID files
-  drush/                 → Drush resolution, execution, health checks, OS notifications
-  cli/                   → CLI command implementations (uses orchestrator)
-  utils/                 → Color helpers, format utilities, shared helpers
 ```
 
-### Key interfaces
+### Key domain interfaces
 
 ```go
 // pkg/core/interfaces.go
@@ -417,7 +425,7 @@ type PostProcessor interface {
 
 ### Engine event loop
 
-The orchestrator (`internal/orchestrator/engine.go`) runs the central pipeline:
+The orchestrator (`internal/app/modules/orchestrator/engine.go`) runs the central pipeline:
 
 1. Watcher emits raw `FileEvent` on a channel
 2. All `EventFilter` implementations decide if the event should be processed
@@ -425,76 +433,223 @@ The orchestrator (`internal/orchestrator/engine.go`) runs the central pipeline:
 4. Matching file extensions are resolved to drush commands via `CommandsPerPattern`
 5. `CommandExecutor` runs the resolved commands
 6. All `PostProcessor` implementations run sequentially with the execution result
-7. `EngineEvent` is sent to the TUI channel (if subscribed)
+7. `EngineEvent` is published to the EventBus on `file.change` and `cache.clear` topics
 
-### Extensibility: adding a custom post-processor
+---
 
-To add a new feature (Slack, Redis, metrics, etc.), create a file in `internal/hooks/` or anywhere in the project, implementing `core.PostProcessor`:
+## Module System (for developers)
+
+### Creating a new module
+
+Implement the `app.Module` interface:
 
 ```go
-package hooks
+type Module interface {
+    Name() string
+    DependsOn() []Module
+    Init(container *Container) error
+    Start(ctx context.Context) error
+    Stop(ctx context.Context) error
+}
+```
+
+- **Name**: unique identifier
+- **DependsOn**: list of modules that must init before this one
+- **Init**: resolve dependencies from container, register own services
+- **Start**: start any background goroutines, or block (UI)
+- **Stop**: clean up resources
+
+### Live example: notifications module
+
+```go
+package notifications
 
 import (
-    "bytes"
     "context"
-    "encoding/json"
-    "net/http"
-    "time"
+    "fmt"
 
+    "github.com/irving-frias/drupal-watcher/internal/app"
+    "github.com/irving-frias/drupal-watcher/internal/app/common"
+    "github.com/irving-frias/drupal-watcher/internal/app/eventbus"
+)
+
+type Module struct {
+    bus *eventbus.EventBus
+}
+
+func (m *Module) Name() string { return "notifications" }
+
+func (m *Module) DependsOn() []app.Module { return nil }
+
+func (m *Module) Init(container *app.Container) error {
+    m.bus = container.MustGet(common.SvcEventBus).(*eventbus.EventBus)
+
+    // Subscribe to cache clear events
+    m.bus.Subscribe(eventbus.TopicCacheClear, func(event any) {
+        fmt.Printf("Cache cleared: %+v\n", event)
+    })
+
+    return nil
+}
+
+func (m *Module) Start(ctx context.Context) error { return nil }
+func (m *Module) Stop(ctx context.Context) error  { return nil }
+```
+
+### Live example: custom executor
+
+```go
+package custom
+
+import (
+    "context"
+    "github.com/irving-frias/drupal-watcher/internal/app"
+    "github.com/irving-frias/drupal-watcher/internal/app/common"
     "github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
+type MyExecutor struct{}
+
+func (e *MyExecutor) Execute(ctx context.Context, commands []string, dir string) core.ExecutionResult {
+    return core.ExecutionResult{ExitCode: 0, Stdout: "ok"}
+}
+
+type Module struct{}
+
+func (m *Module) Name() string { return "custom-executor" }
+
+func (m *Module) DependsOn() []app.Module { return nil }
+
+func (m *Module) Init(container *app.Container) error {
+    // Override the default executor
+    container.Set(common.SvcExecutor, &MyExecutor{})
+    return nil
+}
+
+func (m *Module) Start(ctx context.Context) error { return nil }
+func (m *Module) Stop(ctx context.Context) error  { return nil }
+```
+
+### Registering modules in `cmd/modular/main.go`
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "os"
+
+    "github.com/irving-frias/drupal-watcher/internal/app"
+    cfgmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/config"
+    execmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/executor"
+    orcmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/orchestrator"
+    uimodule "github.com/irving-frias/drupal-watcher/internal/app/modules/ui"
+    watchermodule "github.com/irving-frias/drupal-watcher/internal/app/modules/watcher"
+    "github.com/irving-frias/drupal-watcher/internal/config"
+)
+
+func main() {
+    root := "."
+    if len(os.Args) > 1 {
+        root = os.Args[1]
+    }
+
+    a := app.New(
+        &cfgmodule.Module{WorkDir: root},
+        &watchermodule.Module{},
+        &execmodule.Module{},
+        &orcmodule.Module{},
+        &uimodule.Module{},
+    )
+
+    if err := config.WritePid(root); err != nil {
+        fmt.Fprintf(os.Stderr, "PID: %v\n", err)
+        os.Exit(1)
+    }
+    defer a.Stop(context.Background())
+
+    if err := a.Start(context.Background()); err != nil && err != context.Canceled {
+        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+        os.Exit(1)
+    }
+}
+```
+
+### Startup order
+
+```
+app.Start()
+├── Register EventBus in container
+├── Init modules (dependency-sorted):
+│   ├── config     → creates config.Manager, loads watcher.config.json
+│   ├── watcher    → creates FSNotifyWatcher from config
+│   ├── executor   → creates DrushExecutor from config
+│   ├── orchestrator→ creates Engine with EventBus, watcher, executor
+│   └── ui         → gets EventBus reference
+├── Start modules (sequential):
+│   ├── config     → no-op
+│   ├── watcher    → no-op
+│   ├── executor   → no-op
+│   ├── orchestrator→ starts engine.Run() in a goroutine
+│   └── ui         → runs TUI (blocks until user quits or SIGTERM)
+└── app.Stop() called (on quit or signal):
+    ├── Cancel context → engine goroutine stops
+    └── Stop modules in reverse order
+```
+
+### EventBus topics
+
+| Topic | Published by | Event type | Consumers |
+|---|---|---|---|
+| `file.change` | Orchestrator | `core.EngineEvent` | TUI, notifications |
+| `cache.clear` | Orchestrator | `core.EngineEvent` | TUI, notifications |
+| `error` | Orchestrator | `core.EngineEvent` | TUI |
+| `engine.start` | Orchestrator | (empty) | lifecycle hooks |
+| `engine.stop` | Orchestrator | (empty) | lifecycle hooks |
+
+### Extensibility: adding a custom post-processor
+
+The old approach (still works with `cmd/drupal-watcher`):
+
+```go
 type SlackNotifier struct {
     WebhookURL string
-    client     *http.Client
 }
 
 func (s *SlackNotifier) Name() string { return "SlackNotifier" }
 
 func (s *SlackNotifier) Process(ctx context.Context, event core.FileEvent, result core.ExecutionResult) error {
-    payload, _ := json.Marshal(map[string]interface{}{
-        "text": "drush " + result.Command + " — exit " + string(rune(result.ExitCode)),
-    })
-    req, _ := http.NewRequestWithContext(ctx, "POST", s.WebhookURL, bytes.NewReader(payload))
-    resp, err := s.client.Do(req)
-    if err != nil {
-        return err
-    }
-    resp.Body.Close()
+    // your logic here
+}
+```
+
+Wire it in the module's `Init`:
+
+```go
+func (m *Module) Init(container *app.Container) error {
+    engine := container.MustGet(common.SvcOrchestrator).(*orchestrator.Engine)
+    engine.PostProcessors = append(engine.PostProcessors, &SlackNotifier{...})
     return nil
 }
 ```
 
-Then wire it in the entry point (zero changes to the orchestrator):
-
-```go
-// cmd/watcher/main.go
-
-engineCfg := core.EngineConfig{
-    Watcher:  fsnWatcher,
-    Executor: drushExec,
-    Filters:  []core.EventFilter{patternFilter, excludeFilter},
-    PostProcessors: []core.PostProcessor{
-        builtin.NewDrushClear(),                               // default
-        hooks.NewSlackNotifier("https://hooks.slack.com/..."), // one-liner addition
-    },
-    // ...
-}
-```
-
-The `PostProcessor` interface is the extension point. The engine iterates over all registered processors after every cache clear.
-
-### New entry point: `cmd/watcher`
-
-A minimal dependency-injection entry point that wires all components explicitly:
+### Running the modular binary
 
 ```bash
-go run ./cmd/watcher --root /path/to/drupal --debounce 500
+go run ./cmd/modular                          # current directory
+go run ./cmd/modular /path/to/drupal/project  # with root
+
+# Commands
+go run ./cmd/modular version                  # print version
+go run ./cmd/modular help                     # usage
+
+# Build
+go build -o modular-watcher ./cmd/modular
+./modular-watcher
 ```
 
-Flags: `--root`, `--config`, `--debounce`, `--no-tui`. Does **not** include legacy CLI commands (add/remove/list/stop). For those, use `cmd/drupal-watcher`.
-
-## Development (requires Go 1.24+)
+## Development (requires Go 1.25+)
 
 ```bash
 go test -count=1 ./...

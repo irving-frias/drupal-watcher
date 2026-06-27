@@ -43,8 +43,13 @@ func (a *App) Start(ctx context.Context) error {
 	}
 
 	ctx, a.cancel = context.WithCancel(ctx)
+	a.setupSignalHandler()
+
 	for _, m := range ordered {
 		if err := m.Start(ctx); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 			return fmt.Errorf("module %s start: %w", m.Name(), err)
 		}
 	}
@@ -72,7 +77,7 @@ func (a *App) Done() <-chan struct{} {
 	return a.done
 }
 
-func (a *App) WaitForSignal(ctx context.Context) {
+func (a *App) setupSignalHandler() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 
@@ -80,7 +85,6 @@ func (a *App) WaitForSignal(ctx context.Context) {
 		select {
 		case <-sigCh:
 			a.Stop(context.Background())
-		case <-ctx.Done():
 		case <-a.done:
 		}
 	}()

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,7 +14,6 @@ type EngineInfo struct {
 	changes atomic.Int64
 	clears  atomic.Int64
 	start   time.Time
-	mu      sync.RWMutex
 }
 
 func (e *EngineInfo) Stats() (int64, int64) {
@@ -23,31 +21,14 @@ func (e *EngineInfo) Stats() (int64, int64) {
 }
 
 func (e *EngineInfo) StartTime() time.Time {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
 	return e.start
-}
-
-func (e *EngineInfo) SetChanges(c int64) { e.changes.Store(c) }
-func (e *EngineInfo) SetClears(c int64)  { e.clears.Store(c) }
-func (e *EngineInfo) SetStartTime(t time.Time) {
-	e.mu.Lock()
-	e.start = t
-	e.mu.Unlock()
 }
 
 func RunWithBus(ctx context.Context, bus *eventbus.EventBus) error {
 	info := &EngineInfo{start: time.Now()}
 	eventChan := make(chan core.EngineEvent, 100)
-	defer close(eventChan)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if bus == nil {
-			return
-		}
+	if bus != nil {
 		bus.Subscribe(eventbus.TopicFileChange, func(event any) {
 			evt, ok := event.(core.EngineEvent)
 			if !ok {
@@ -63,15 +44,13 @@ func RunWithBus(ctx context.Context, bus *eventbus.EventBus) error {
 			if !ok {
 				return
 			}
-			info.SetClears(info.clears.Load() + 1)
+			info.clears.Add(1)
 			select {
 			case eventChan <- evt:
 			default:
 			}
 		})
-		<-ctx.Done()
-	}()
-	defer wg.Wait()
+	}
 
-	return ui.Run(eventChan, info)
+	return ui.RunContext(ctx, eventChan, info)
 }

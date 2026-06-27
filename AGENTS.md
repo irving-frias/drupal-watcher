@@ -1,45 +1,61 @@
-# Drupal Watcher — Project Guide (Go Migration)
+# Drupal Watcher — Project Guide
 
 ## Commands
 - **Test**: `go test ./...`
 - **Fresh test**: `go test -count=1 ./...`
 - **Vet**: `go vet ./...`
 - **Build**: `go build -o drupal-watcher ./cmd/drupal-watcher`
+- **Build modular**: `go build -o modular-watcher ./cmd/modular`
 - **Run**: `./bin/drupal-watcher <command>` or `go run ./cmd/drupal-watcher <command>`
 
 ## Project structure
-- `bin/drupal-watcher` — Shell launcher (runs `install.php` to download Go binary, then execs it)
+- `bin/drupal-watcher` — PHP launcher (`#!/usr/bin/env php`), calls `install.php` then execs Go binary
 - `bin/install.php` — Binary downloader (vendor/bin entry managed by Composer via the `bin` field in `composer.json`)
-- `cmd/drupal-watcher/main.go` — Entry point, arg parsing (`parseFlags`), dispatch (switch-based)
+- `cmd/drupal-watcher/main.go` — Legacy entry point, arg parsing (`parseFlags`), dispatch (switch-based)
+- `cmd/modular/main.go` — Modular entry point with DI container + module system (recommended for new features)
+- `internal/app/` — Module system (`Container`, `Module` interface, `App` lifecycle, `EventBus`)
+- `internal/app/modules/` — Built-in modules (config, watcher, executor, orchestrator, ui)
 - `internal/config/config.go` — `Manager` struct with per-root cache, config load/save, Drupal root detection, PID management
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
-- `internal/watcher/watcher.go` — fsnotify file watcher, debounce, config-aware cache clear args
+- `internal/orchestrator/engine.go` — Legacy engine (direct EventChan)
+- `internal/app/modules/orchestrator/engine.go` — New engine with EventBus
 - `internal/cli/cli.go` — All CLI commands (`CmdStart`, `CmdList`, `CmdStatus`, etc.)
-- `internal/utils/utils.go` — Color helpers (pterm-based), shared helpers
-- All config package tests in `internal/config/config_test.go`
-- All cli package tests in `internal/cli/cli_test.go`
-- All drush package tests in `internal/drush/drush_test.go`
-- cmd tests in `cmd/drupal-watcher/main_test.go`
+- `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages)
+- `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `PostProcessor`)
+- `pkg/adapters/` — Adapter implementations (fsnotify, drush, regex filters, logger)
 
 ## Guidelines
 - **All user-facing messages in English**
 - Functions accept optional `root` parameter for testability (defaults to `os.Getwd()`)
 - Caches are per-root via `map[string]*cacheEntry`; use `InvalidateConfigCache(root)` to reset
 - Use `Get*` prefix for interface methods to avoid naming conflict with struct fields
-- All paths relative to project root unless otherwise specified
-- Convention: `CmdStart`, `CmdList`, `CmdStatus` etc. for command functions
-- Config satisfies both `watcher.Config` and `drush.DrushConfig` interfaces via method set
+- New features should use the module system (`internal/app/`) with `app.Module` interface
+- Modules register services in the `Container` via `Init()`; services are identified by `common.ServiceName`
+- EventBus (`internal/app/eventbus/`) decouples modules — new consumers subscribe to topics
 - PID/starttime files stored in project root (`cwd/`) by default, or in `root` if specified
 - **Releases**: before each release, update `composer.json` → `extra.drupal-watcher-version`. The `build.yml` workflow reads that version, creates the tag, and auto-bumps the patch post-release
 
-## Key types
+## Service names (common.ServiceName)
+- `SvcConfig` — `*config.Config`
+- `SvcWatcher` — `core.Watcher` (FSNotifyWatcher)
+- `SvcExecutor` — `core.CommandExecutor` (DrushExecutor)
+- `SvcOrchestrator` — `*orchestrator.Engine`
+- `SvcEventBus` — `*eventbus.EventBus`
+- `SvcWorkDir` — `string` (project root)
+- `SvcDrupalRoot` — `string` (absolute Drupal root path)
+
+## EventBus topics
+- `file.change` — File change detected
+- `cache.clear` — Drush cache clear executed
+- `error` — Watcher or engine error
+
+## Key types (legacy)
 - `config.Config` — Main configuration struct with all watcher settings
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
 - `drush.DrushResult` — Result of a drush command execution
-- `watcher.Config` — Interface for watcher operations (satisfied by config.Config)
-- `watcher.Stats` — Runtime statistics (atomic counters for changes/clears)
-- `watcher.Handle` — Watcher handle with stop channel and references
+- `core.EngineConfig` — Dependency injection struct for the legacy engine
+- `core.EngineEvent` — Event emitted on file changes / cache clears
 
 ## Migration notes (from TS to Go)
 - Replaced `bun:test` with `go test`
@@ -48,3 +64,5 @@
 - PID files use `syscall.Kill(pid, 0)` for process check
 - Colors use pterm (replaced raw ANSI escape codes)
 - Interface methods use `Get*` prefix to avoid Go field/method name conflicts
+- Notifications use `beeep` (cross-platform Go library)
+- Launcher is PHP (not bash) to avoid `/bin/bash` dependency on servers

@@ -2,13 +2,20 @@ package orchestrator
 
 import (
 	"context"
+	"os"
 
 	"github.com/irving-frias/drupal-watcher/internal/app"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
+	"github.com/irving-frias/drupal-watcher/internal/app/eventbus"
+	"github.com/irving-frias/drupal-watcher/internal/config"
+	"github.com/irving-frias/drupal-watcher/internal/hooks/builtin"
+	"github.com/irving-frias/drupal-watcher/pkg/adapters"
+	"github.com/irving-frias/drupal-watcher/pkg/core"
+	"github.com/pterm/pterm"
 )
 
 type Module struct {
-	svc OrchestratorService
+	engine *Engine
 }
 
 var _ app.Module = (*Module)(nil)
@@ -18,10 +25,59 @@ func (m *Module) Name() string { return "orchestrator" }
 func (m *Module) DependsOn() []app.Module { return nil }
 
 func (m *Module) Init(container *app.Container) error {
-	_ = container.MustGet(common.SvcConfigService)
+	cfg := container.MustGet(common.SvcConfig).(*config.Config)
+	watcher := container.MustGet(common.SvcWatcher).(core.Watcher)
+	exec := container.MustGet(common.SvcExecutor).(core.CommandExecutor)
+	bus := container.MustGet(common.SvcEventBus).(*eventbus.EventBus)
+	dr := container.MustGet(common.SvcDrupalRoot).(string)
+
+	filters := []core.EventFilter{
+		adapters.NewPatternFilter(cfg.Patterns),
+		adapters.NewExcludeFilter(cfg.ExcludePatterns),
+		adapters.NewDotfileFilter(),
+	}
+
+	m.engine = NewEngine(EngineConfig{
+		Watcher:            watcher,
+		Executor:           exec,
+		Filters:            filters,
+		PostProcessors:     []core.PostProcessor{&builtin.DrushClear{}},
+		EventBus:           bus,
+		Logger:             adapters.NewDiscardLogger(),
+		Debounce:           cfg.Debounce,
+		Patterns:           cfg.Patterns,
+		ExcludePatterns:    cfg.ExcludePatterns,
+		CommandsPerPattern: cfg.CommandsPerPattern,
+		ResolvedSites:      cfg.GetResolvedSites(),
+		DrupalRoot:         dr,
+	})
+
+	container.Set(common.SvcOrchestrator, m.engine)
+
+	pterm.Info.Printfln("Routes: %s", pterm.Cyan(stringJoin(cfg.Routes, ", ")))
+	pterm.Info.Printfln("Patterns: %s", pterm.Cyan(stringJoin(cfg.Patterns, ", ")))
+	pterm.Success.Printfln("Modular watcher PID %d.", os.Getpid())
 	return nil
 }
 
-func (m *Module) Start(ctx context.Context) error { return nil }
+func (m *Module) Start(ctx context.Context) error {
+	go func() {
+		if err := m.engine.Run(ctx); err != nil && err != context.Canceled {
+			pterm.Error.Printfln("Engine: %v", err)
+		}
+	}()
+	return nil
+}
 
 func (m *Module) Stop(ctx context.Context) error { return nil }
+
+func stringJoin(elems []string, sep string) string {
+	if len(elems) == 0 {
+		return ""
+	}
+	result := elems[0]
+	for _, e := range elems[1:] {
+		result += sep + e
+	}
+	return result
+}

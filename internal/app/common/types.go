@@ -1,30 +1,13 @@
 package common
 
-import "context"
-
 type ServiceName string
 
 const (
-	SvcEventBus      ServiceName = "eventbus"
-	SvcConfigService ServiceName = "config.service"
-	SvcWatcherService ServiceName = "watcher.service"
-	SvcExecutorService ServiceName = "executor.service"
-	SvcOrchestrator  ServiceName = "orchestrator"
-	SvcUIService     ServiceName = "ui.service"
-	SvcNotification  ServiceName = "notification.service"
+	SvcEventBus     ServiceName = "eventbus"
+	SvcConfig       ServiceName = "config"
+	SvcWorkDir      ServiceName = "workdir"
+	SvcDrupalRoot   ServiceName = "drupal.root"
+	SvcWatcher      ServiceName = "watcher"
+	SvcExecutor     ServiceName = "executor"
+	SvcOrchestrator ServiceName = "orchestrator"
 )
-
-type Lifecycle interface {
-	Start(ctx context.Context) error
-	Stop(ctx context.Context) error
-}
-
-type Initializer interface {
-	Init(ctx context.Context, container ServiceRegistry) error
-}
-
-type ServiceRegistry interface {
-	Set(name ServiceName, svc any)
-	Get(name ServiceName) any
-	MustGet(name ServiceName) any
-}
