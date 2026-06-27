@@ -3,11 +3,14 @@ package config
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/irving-frias/drupal-watcher/internal/app"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
 	"github.com/irving-frias/drupal-watcher/internal/config"
+	"github.com/irving-frias/drupal-watcher/internal/drush"
+	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
 type Module struct {
@@ -38,11 +41,51 @@ func (m *Module) Init(container *app.Container) error {
 	}
 	m.DrupalRoot = dr
 	container.Set(common.SvcDrupalRoot, dr)
+
+	m.resolveSites(dr)
+
 	return nil
 }
 
 func (m *Module) Start(ctx context.Context) error { return nil }
 
 func (m *Module) Stop(ctx context.Context) error { return nil }
+
+func (m *Module) resolveSites(drupalRoot string) {
+	if !drush.HasMultiSite(drupalRoot) {
+		return
+	}
+
+	sites, err := drush.LoadSitesYml(drupalRoot, m.WorkDir)
+	if err != nil {
+		return
+	}
+
+	var filtered map[string]drush.Site
+	if len(m.cfg.Sites) > 0 {
+		filtered = drush.FilterSites(sites, m.cfg.Sites, nil)
+	} else {
+		filtered = sites
+	}
+	if len(filtered) == 0 {
+		return
+	}
+
+	var siteList []core.SiteInfo
+	for _, s := range filtered {
+		siteList = append(siteList, core.SiteInfo{Name: s.Name, URI: s.URI})
+	}
+	m.cfg.SetResolvedSites(siteList)
+
+	for _, site := range siteList {
+		siteRoot := filepath.Join(drupalRoot, "sites", site.Name)
+		for _, sub := range []string{"modules", "themes", "profiles", "custom"} {
+			dir := filepath.Join(siteRoot, sub)
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				m.cfg.Routes = append(m.cfg.Routes, dir)
+			}
+		}
+	}
+}
 
 func (m *Module) GetConfig() *config.Config { return m.cfg }
