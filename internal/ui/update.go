@@ -137,6 +137,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.updateStatus()
 		m.viewport.SetContent(m.renderEvents())
+		if m.autoScroll {
+			m.viewport.GotoBottom()
+		}
 		return m, tickCmd()
 
 	case engineEventMsg:
