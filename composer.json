@@ -10,7 +10,7 @@
     "php": ">=8.1"
   },
   "extra": {
-    "drupal-watcher-version": "1.2.44"
+    "drupal-watcher-version": "1.2.45"
   },
   "scripts": {
     "post-install-cmd": [
