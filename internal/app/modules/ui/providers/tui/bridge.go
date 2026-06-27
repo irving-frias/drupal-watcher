@@ -50,6 +50,16 @@ func RunWithBus(ctx context.Context, bus *eventbus.EventBus) error {
 			default:
 			}
 		})
+		bus.Subscribe(eventbus.TopicError, func(event any) {
+			evt, ok := event.(core.EngineEvent)
+			if !ok {
+				return
+			}
+			select {
+			case eventChan <- evt:
+			default:
+			}
+		})
 	}
 
 	return ui.RunContext(ctx, eventChan, info)
