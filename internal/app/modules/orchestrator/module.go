@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"os"
+	"path/filepath"
 
 	"github.com/irving-frias/drupal-watcher/internal/app"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
@@ -54,7 +55,7 @@ func (m *Module) Init(container *app.Container) error {
 		CommandsPerPattern: cfg.CommandsPerPattern,
 		ResolvedSites:      cfg.GetResolvedSites(),
 		DrupalRoot:         dr,
-		Routes:             cfg.Routes,
+		Routes:             resolveRoutes(cfg.Routes),
 	})
 
 	container.Set(common.SvcOrchestrator, m.engine)
@@ -75,6 +76,19 @@ func (m *Module) Start(ctx context.Context) error {
 }
 
 func (m *Module) Stop(ctx context.Context) error { return nil }
+
+func resolveRoutes(routes []string) []string {
+	res := make([]string, 0, len(routes))
+	for _, r := range routes {
+		abs, err := filepath.Abs(r)
+		if err != nil {
+			res = append(res, r)
+		} else {
+			res = append(res, abs)
+		}
+	}
+	return res
+}
 
 func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 	if cfg.SkipLint {

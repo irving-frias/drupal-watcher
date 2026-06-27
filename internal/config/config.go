@@ -204,8 +204,8 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 		DrupalRoot: &drupalRoot,
 		LintCommands: map[string]string{
 			".php":  "php -l",
-			".yml":  "php -l",
-			".yaml": "php -l",
+			".yml":  "yaml",
+			".yaml": "yaml",
 		},
 		PollInterval:    2000,
 		EventBufferSize: 500,
