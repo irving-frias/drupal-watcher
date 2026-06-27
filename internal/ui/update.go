@@ -59,6 +59,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "pgup", "pgdown":
 			if !m.showHelp {
+				m.autoScroll = false
 				var cmd tea.Cmd
 				m.viewport, cmd = m.viewport.Update(msg)
 				return m, cmd
@@ -129,6 +130,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.MouseMsg:
 		if !m.showHelp {
+			m.autoScroll = false
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
 			return m, cmd
