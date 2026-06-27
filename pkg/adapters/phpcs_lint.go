@@ -56,9 +56,7 @@ func (c *PhpCsLintChecker) Lint(filePath string) *core.LintResult {
 	}
 
 	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 2 {
-		if strings.Contains(msg, "installed_paths") || strings.Contains(msg, "No such file or directory") || strings.Contains(msg, "Could not find") {
-			return nil
-		}
+		return nil
 	}
 
 	if msg == "" {
