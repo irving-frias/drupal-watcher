@@ -163,7 +163,7 @@ func isSkippedDir(name string, skipDirs []string) bool {
 var dirsSkippedByDefault = []string{
 	"node_modules", ".git", ".svn", ".hg",
 	"contrib", "vendor", "bower_components",
-	"files", "css", "js", "images", "fonts",
+	"files", "images", "fonts",
 }
 
 func gatherDirs(routes []string, skipDirs []string) []string {
