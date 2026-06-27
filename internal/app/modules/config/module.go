@@ -105,7 +105,10 @@ func resolveAbs(p string) string {
 }
 
 func (m *Module) normalizeRoutes() {
+	base := resolveAbs(m.WorkDir)
 	for i, r := range m.cfg.Routes {
-		m.cfg.Routes[i] = resolveAbs(r)
+		if !filepath.IsAbs(r) {
+			m.cfg.Routes[i] = filepath.Join(base, r)
+		}
 	}
 }
