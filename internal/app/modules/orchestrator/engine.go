@@ -221,6 +221,11 @@ func (e *Engine) processBatch() {
 }
 
 func (e *Engine) lintFiles(files map[string]struct{}) *core.LintResult {
+	var (
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		fail   *core.LintResult
+	)
 	for f := range files {
 		ext := filepath.Ext(f)
 		if ext == ".info" {
@@ -230,11 +235,20 @@ func (e *Engine) lintFiles(files map[string]struct{}) *core.LintResult {
 		if !ok {
 			continue
 		}
-		if result := checker.Lint(f); result != nil {
-			return result
-		}
+		wg.Add(1)
+		go func(path string, chk core.LintChecker) {
+			defer wg.Done()
+			if result := chk.Lint(path); result != nil {
+				mu.Lock()
+				if fail == nil {
+					fail = result
+				}
+				mu.Unlock()
+			}
+		}(f, checker)
 	}
-	return nil
+	wg.Wait()
+	return fail
 }
 
 func (e *Engine) affectedSites(files map[string]struct{}) []core.SiteInfo {

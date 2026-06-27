@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/irving-frias/drupal-watcher/pkg/core"
@@ -35,20 +36,26 @@ func (f *PatternFilter) ShouldProcess(event core.FileEvent) bool {
 }
 
 type ExcludeFilter struct {
-	excludes []string
+	re *regexp.Regexp
 }
 
 func NewExcludeFilter(excludes []string) *ExcludeFilter {
-	return &ExcludeFilter{excludes: excludes}
+	if len(excludes) == 0 {
+		return &ExcludeFilter{re: regexp.MustCompile(`^$`)}
+	}
+	parts := make([]string, 0, len(excludes))
+	for _, e := range excludes {
+		if e == "" {
+			continue
+		}
+		parts = append(parts, regexp.QuoteMeta(e))
+	}
+	pattern := strings.Join(parts, "|")
+	return &ExcludeFilter{re: regexp.MustCompile(pattern)}
 }
 
 func (f *ExcludeFilter) ShouldProcess(event core.FileEvent) bool {
-	for _, e := range f.excludes {
-		if strings.Contains(event.Path, e) {
-			return false
-		}
-	}
-	return true
+	return !f.re.MatchString(event.Path)
 }
 
 type DotfileFilter struct{}

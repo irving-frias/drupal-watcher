@@ -77,11 +77,16 @@ func (m *Module) resolveSites(drupalRoot string) {
 	}
 	m.cfg.SetResolvedSites(siteList)
 
+	routeSet := make(map[string]bool, len(m.cfg.Routes))
+	for _, r := range m.cfg.Routes {
+		routeSet[r] = true
+	}
 	for _, site := range siteList {
 		siteRoot := filepath.Join(drupalRoot, "sites", site.Name)
 		for _, sub := range []string{"modules", "themes", "profiles", "custom"} {
 			dir := filepath.Join(siteRoot, sub)
-			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			if info, err := os.Stat(dir); err == nil && info.IsDir() && !routeSet[dir] {
+				routeSet[dir] = true
 				m.cfg.Routes = append(m.cfg.Routes, dir)
 			}
 		}

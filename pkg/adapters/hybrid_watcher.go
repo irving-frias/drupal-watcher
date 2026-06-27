@@ -12,21 +12,29 @@ type HybridWatcher struct {
 	fsnotify   *FSNotifyWatcher
 	poll       *PollingWatcher
 	dedupWin   time.Duration
+	dedup      *dedup
+	bufSize    int
 }
 
-func NewHybridWatcher(fsnotify *FSNotifyWatcher, poll *PollingWatcher, dedupWindow time.Duration) *HybridWatcher {
+func NewHybridWatcher(fsnotify *FSNotifyWatcher, poll *PollingWatcher, dedupWindow time.Duration, opts WatcherOptions) *HybridWatcher {
 	if dedupWindow <= 0 {
 		dedupWindow = time.Second
+	}
+	bufSize := opts.BufferSize
+	if bufSize <= 0 {
+		bufSize = 500
 	}
 	return &HybridWatcher{
 		fsnotify: fsnotify,
 		poll:     poll,
 		dedupWin: dedupWindow,
+		dedup:    newDedup(dedupWindow),
+		bufSize:  bufSize,
 	}
 }
 
 func (w *HybridWatcher) Start(ctx context.Context) (<-chan core.FileEvent, <-chan error) {
-	outEvents := make(chan core.FileEvent, 200)
+	outEvents := make(chan core.FileEvent, w.bufSize)
 	outErrs := make(chan error, 2)
 
 	fsEvents, fsErrs := w.fsnotify.Start(ctx)
@@ -35,7 +43,7 @@ func (w *HybridWatcher) Start(ctx context.Context) (<-chan core.FileEvent, <-cha
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	dedup := newDedup(w.dedupWin)
+	dedup := w.dedup
 
 	go func() {
 		defer wg.Done()
@@ -136,6 +144,7 @@ func (w *HybridWatcher) Remove(path string) error {
 }
 
 func (w *HybridWatcher) Close() error {
+	w.dedup.stop()
 	if err := w.fsnotify.Close(); err != nil {
 		return err
 	}
@@ -143,16 +152,44 @@ func (w *HybridWatcher) Close() error {
 }
 
 type dedup struct {
-	mu     sync.Mutex
-	window time.Duration
-	seen   map[string]time.Time
+	mu       sync.Mutex
+	window   time.Duration
+	seen     map[string]time.Time
+	stopCh   chan struct{}
 }
 
 func newDedup(window time.Duration) *dedup {
-	return &dedup{
+	d := &dedup{
 		window: window,
 		seen:   make(map[string]time.Time),
+		stopCh: make(chan struct{}),
 	}
+	go d.cleanupLoop()
+	return d
+}
+
+func (d *dedup) cleanupLoop() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			d.mu.Lock()
+			cutoff := time.Now().Add(-d.window)
+			for path, t := range d.seen {
+				if t.Before(cutoff) {
+					delete(d.seen, path)
+				}
+			}
+			d.mu.Unlock()
+		case <-d.stopCh:
+			return
+		}
+	}
+}
+
+func (d *dedup) stop() {
+	close(d.stopCh)
 }
 
 func (d *dedup) isDuplicate(path string) bool {

@@ -25,25 +25,33 @@ func (m *Module) DependsOn() []app.Module { return nil }
 func (m *Module) Init(container *app.Container) error {
 	cfg := container.MustGet(common.SvcConfig).(*config.Config)
 	skipDirs := append(adapters.DefaultSkipDirs(), cfg.ExcludePatterns...)
+	bufSize := cfg.EventBufferSize
+	if bufSize <= 0 {
+		bufSize = 500
+	}
+
+	opts := adapters.WatcherOptions{
+		BufferSize: bufSize,
+		PollInterval: time.Duration(cfg.PollInterval) * time.Millisecond,
+		SkipDirs:    skipDirs,
+	}
 
 	switch cfg.WatchMode {
 	case "poll":
-		poll := adapters.NewPollingWatcher(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond)
-		m.watcher = poll
+		m.watcher = adapters.NewPollingWatcherWithOpts(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond, opts)
 
 	case "hybrid":
-		fsn, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
+		fsn, err := adapters.NewFSNotifyWatcherWithOpts(cfg.Routes, skipDirs, opts)
 		if err != nil {
 			return fmt.Errorf("create fsnotify for hybrid: %w", err)
 		}
-		poll := adapters.NewPollingWatcher(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond)
-		m.watcher = adapters.NewHybridWatcher(fsn, poll, time.Second)
+		poll := adapters.NewPollingWatcherWithOpts(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond, opts)
+		m.watcher = adapters.NewHybridWatcher(fsn, poll, time.Second, opts)
 
 	default: // "auto" or "fsnotify"
-		fsn, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
+		fsn, err := adapters.NewFSNotifyWatcherWithOpts(cfg.Routes, skipDirs, opts)
 		if err != nil {
-			poll := adapters.NewPollingWatcher(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond)
-			m.watcher = poll
+			m.watcher = adapters.NewPollingWatcherWithOpts(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond, opts)
 		} else {
 			m.watcher = fsn
 		}

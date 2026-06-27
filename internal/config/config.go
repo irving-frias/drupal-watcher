@@ -35,6 +35,7 @@ type Config struct {
 	LintCommands        map[string]string `json:"lintCommands,omitempty"`
 	WatchMode           string            `json:"watchMode,omitempty"`
 	PollInterval        int               `json:"pollInterval,omitempty"`
+	EventBufferSize     int               `json:"eventBufferSize,omitempty"`
 	resolvedSites       []core.SiteInfo
 }
 
@@ -54,6 +55,7 @@ func (c Config) GetSkipLint() bool                       { return c.SkipLint }
 func (c Config) GetLintCommands() map[string]string      { return c.LintCommands }
 func (c Config) GetWatchMode() string                    { return c.WatchMode }
 func (c Config) GetPollInterval() int                    { return c.PollInterval }
+func (c Config) GetEventBufferSize() int                 { return c.EventBufferSize }
 
 func (c *Config) SetResolvedSites(sites []core.SiteInfo) { c.resolvedSites = sites }
 
@@ -205,7 +207,8 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 			".yml":  "php -l",
 			".yaml": "php -l",
 		},
-		PollInterval: 2000,
+		PollInterval:    2000,
+		EventBufferSize: 500,
 	}
 }
 
@@ -313,6 +316,9 @@ func (m *Manager) ValidateConfig(cfg Config, root string) Config {
 	}
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = def.PollInterval
+	}
+	if cfg.EventBufferSize <= 0 {
+		cfg.EventBufferSize = def.EventBufferSize
 	}
 	// Normalize routes
 	for i, r := range cfg.Routes {

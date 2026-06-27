@@ -6,32 +6,49 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
+type WatcherOptions struct {
+	BufferSize   int
+	PollInterval time.Duration
+	SkipDirs     []string
+}
+
 type FSNotifyWatcher struct {
-	watcher  *fsnotify.Watcher
-	routes   []string
-	skipDirs []string
+	watcher   *fsnotify.Watcher
+	routes    []string
+	skipDirs  []string
+	bufSize   int
 }
 
 func NewFSNotifyWatcher(routes, skipDirs []string) (*FSNotifyWatcher, error) {
+	return NewFSNotifyWatcherWithOpts(routes, skipDirs, WatcherOptions{BufferSize: 100})
+}
+
+func NewFSNotifyWatcherWithOpts(routes, skipDirs []string, opts WatcherOptions) (*FSNotifyWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
+	}
+	bufSize := opts.BufferSize
+	if bufSize <= 0 {
+		bufSize = 100
 	}
 	fw := &FSNotifyWatcher{
 		watcher:  w,
 		routes:   routes,
 		skipDirs: skipDirs,
+		bufSize:  bufSize,
 	}
 	return fw, nil
 }
 
 func (f *FSNotifyWatcher) Start(ctx context.Context) (<-chan core.FileEvent, <-chan error) {
-	eventCh := make(chan core.FileEvent, 100)
+	eventCh := make(chan core.FileEvent, f.bufSize)
 	errCh := make(chan error, 1)
 
 	watchDirs := gatherDirs(f.routes, f.skipDirs)
@@ -60,7 +77,7 @@ func (f *FSNotifyWatcher) Start(ctx context.Context) (<-chan core.FileEvent, <-c
 					if info, err := os.Stat(event.Name); err == nil && info.IsDir() {
 						base := filepath.Base(event.Name)
 						if !isSkippedDir(base, f.skipDirs) {
-							f.watcher.Add(event.Name)
+							f.Add(event.Name)
 						}
 					}
 				}
@@ -95,7 +112,18 @@ func (f *FSNotifyWatcher) Start(ctx context.Context) (<-chan core.FileEvent, <-c
 }
 
 func (f *FSNotifyWatcher) Add(path string) error {
-	return f.watcher.Add(path)
+	if runtime.GOOS != "linux" {
+		return f.watcher.Add(path)
+	}
+	return filepath.WalkDir(path, func(walkPath string, d os.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		if isSkippedDir(d.Name(), f.skipDirs) {
+			return filepath.SkipDir
+		}
+		return f.watcher.Add(walkPath)
+	})
 }
 
 func (f *FSNotifyWatcher) Remove(path string) error {
