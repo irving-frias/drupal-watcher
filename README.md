@@ -177,6 +177,7 @@ When running with `--no-tui`, type commands at the prompt:
     ".yml": "yaml",
     ".yaml": "yaml"
   },
+  "phpCsStandard": "",
   "watchMode": "auto",
   "pollInterval": 2000
 }
@@ -196,6 +197,7 @@ When running with `--no-tui`, type commands at the prompt:
 | `Sites`               | Site names to watch in multi-site setups (resolved via `drush/sites.yml`) |
 | `skipLint`            | Disable lint checking before cache clear                     |
 | `lintCommands`        | Per-extension lint commands (default: `php -l` for PHP, Go yaml parser for YAML). Only checks files inside `routes`. |
+| `phpCsStandard`       | PHPCS standard for PHP linting, e.g. `"auto"`, `"Drupal"`, `"DrupalStrict"`. When set, replaces `php -l` with `phpcs` using Drupal coding standards. `"auto"` detects Drupal 11 → `DrupalStrict`, else `Drupal`. Empty string (default) keeps `php -l`. |
 | `watchMode`           | File watching mode: `auto`, `fsnotify`, `poll`, `hybrid`     |
 | `pollInterval`        | Polling interval in ms (default 2000, only used in poll/hybrid modes) |
 
@@ -217,7 +219,9 @@ Config via `watchMode` in `watcher.config.json` or override per session. Polling
 1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
 2. Uses `fsnotify` to watch all subdirectories under the configured routes (falls back to polling if fsnotify fails, or use hybrid mode for both)
 3. When files change, debounces (default 800ms) collecting all changes into a batch
-4. **PHP and YAML files are linted** before running drush (`php -l` for PHP, Go yaml parser for YAML). Only files inside watched `routes` are checked. If linting fails, the cache clear is skipped and the error (with file path) is displayed in the TUI.
+4. **PHP and YAML files are linted** before running drush (`php -l` or `phpcs` for PHP, Go yaml parser for YAML). Only files inside watched `routes` are checked. If linting fails, the cache clear is skipped and the error (with file path) is displayed in the TUI.
+
+   When `phpCsStandard` is set in the config, PHP files are checked with `phpcs` using Drupal coding standards (auto-detects `DrupalStrict` for Drupal 11, `Drupal` for Drupal 10). Requires `drupal/coder` and `squizlabs/php_codesniffer` installed via Composer.
 5. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
 6. If any change requires a full rebuild (`cr`), it overrides all other commands
 7. Drush output and post-clear commands are displayed in the TUI or printed to the terminal

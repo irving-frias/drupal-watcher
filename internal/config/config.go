@@ -33,6 +33,7 @@ type Config struct {
 	Sites               []string          `json:"sites,omitempty"`
 	SkipLint            bool              `json:"skipLint,omitempty"`
 	LintCommands        map[string]string `json:"lintCommands,omitempty"`
+	PhpCsStandard       string            `json:"phpCsStandard,omitempty"`
 	WatchMode           string            `json:"watchMode,omitempty"`
 	PollInterval        int               `json:"pollInterval,omitempty"`
 	EventBufferSize     int               `json:"eventBufferSize,omitempty"`
@@ -56,6 +57,7 @@ func (c Config) GetLintCommands() map[string]string      { return c.LintCommands
 func (c Config) GetWatchMode() string                    { return c.WatchMode }
 func (c Config) GetPollInterval() int                    { return c.PollInterval }
 func (c Config) GetEventBufferSize() int                 { return c.EventBufferSize }
+func (c Config) GetPhpCsStandard() string                { return c.PhpCsStandard }
 
 func (c *Config) SetResolvedSites(sites []core.SiteInfo) { c.resolvedSites = sites }
 

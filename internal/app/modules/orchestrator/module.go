@@ -88,7 +88,11 @@ func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 	for ext := range exts {
 		switch ext {
 		case ".php":
-			m[ext] = adapters.NewPhpLintChecker()
+			if std := cfg.GetPhpCsStandard(); std != "" {
+				m[ext] = adapters.NewPhpCsLintChecker(std)
+			} else {
+				m[ext] = adapters.NewPhpLintChecker()
+			}
 		case ".yml", ".yaml":
 			m[ext] = adapters.NewYamlLintChecker()
 		}

@@ -40,13 +40,20 @@
 - `SvcWorkDir` — `string` (project root)
 - `SvcDrupalRoot` — `string` (absolute Drupal root path)
 
+## phpcs linting
+- `PhpCsLintChecker` in `pkg/adapters/phpcs_lint.go` — runs `phpcs` with Drupal standards
+- Config field `phpCsStandard`: empty = `php -l`, `"auto"` = detect Drupal 11/10, `"Drupal"` / `"DrupalStrict"` = explicit standard
+- Auto-detection reads `composer.json` `require.drupal/core` version constraint
+- Falls back to `PhpLintChecker` (`php -l`) if `phpCsStandard` is empty
+- PHPCS binary found at `vendor/bin/phpcs`, `../vendor/bin/phpcs`, or `$PATH`
+
 ## EventBus topics
 - `file.change` — File change detected
 - `cache.clear` — Drush cache clear executed
 - `error` — Watcher or engine error
 
 ## Key types
-- `config.Config` — Main configuration struct with all watcher settings (includes `SkipLint`, `LintCommands`, `WatchMode`, `PollInterval`)
+- `config.Config` — Main configuration struct with all watcher settings (includes `SkipLint`, `LintCommands`, `PhpCsStandard`, `WatchMode`, `PollInterval`)
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
 - `drush.DrushResult` — Result of a drush command execution
