@@ -344,25 +344,16 @@ The watcher writes a PID file (`.drupal-watcher.pid`) to prevent multiple instan
 
 ## Architecture
 
-The codebase uses a **hexagonal (ports & adapters)** architecture with two layers:
-
-| Layer | Location | Purpose |
-|---|---|---|
-| **Domain** | `pkg/core/` | Interfaces and models — the "ports" |
-| **Adapters** | `pkg/adapters/` | Implementations of domain interfaces — the "adapters" |
-| **Legacy entry** | `cmd/drupal-watcher/` | Full-featured CLI with manual wiring |
-| **Modular entry** | `cmd/modular/` | DI container + module system (recommended for new features) |
+The codebase uses a **hexagonal (ports & adapters)** architecture:
 
 ```
 cmd/
-  drupal-watcher/        → Binary (legacy CLI — manual wiring, full feature set)
-  watcher/               → Binary (thin DI, no CLI commands)
-  modular/               → Binary (module system with DI container + EventBus)
+  drupal-watcher/        → Binary (module system with DI container + EventBus)
 
 internal/
   app/
     app.go               → App lifecycle (Start/Stop/Done)
-    container.go          → DI container (Set/Get/MustGet)
+    container.go         → DI container (Set/Get/MustGet)
     module.go            → Module interface
     common/types.go      → ServiceName constants
     eventbus/
@@ -375,7 +366,6 @@ internal/
       ui/                → UI module (runs Bubble Tea TUI, blocks until quit)
         providers/tui/   → TUI bridge (EventBus → EngineEvent channel)
 
-  orchestrator/          → Legacy engine (direct EventChan, no EventBus)
   hooks/
     builtin/
       drush_clear.go     → Default post-execution hook
@@ -384,7 +374,6 @@ internal/
   ui/                    → Bubble Tea TUI (model, view, update, styles)
   config/                → Config management, Drupal root detection, PID files
   drush/                 → Drush resolution, execution, health checks
-  cli/                   → CLI command implementations (uses legacy orchestrator)
   utils/                 → Color helpers, format utilities
 
 pkg/

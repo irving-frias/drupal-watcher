@@ -50,7 +50,7 @@
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
 - `drush.DrushResult` — Result of a drush command execution
-- `core.EngineConfig` — Dependency injection struct for the legacy engine
+- `core.EngineConfig` — Dependency injection struct for the engine
 - `core.EngineEvent` — Event emitted on file changes / cache clears
 
 ## Migration notes (from TS to Go)
