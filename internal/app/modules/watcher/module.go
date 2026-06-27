@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/app"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
@@ -24,11 +25,30 @@ func (m *Module) DependsOn() []app.Module { return nil }
 func (m *Module) Init(container *app.Container) error {
 	cfg := container.MustGet(common.SvcConfig).(*config.Config)
 	skipDirs := append(adapters.DefaultSkipDirs(), cfg.ExcludePatterns...)
-	w, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
-	if err != nil {
-		return fmt.Errorf("create watcher: %w", err)
+
+	switch cfg.WatchMode {
+	case "poll":
+		poll := adapters.NewPollingWatcher(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond)
+		m.watcher = poll
+
+	case "hybrid":
+		fsn, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
+		if err != nil {
+			return fmt.Errorf("create fsnotify for hybrid: %w", err)
+		}
+		poll := adapters.NewPollingWatcher(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond)
+		m.watcher = adapters.NewHybridWatcher(fsn, poll, time.Second)
+
+	default: // "auto" or "fsnotify"
+		fsn, err := adapters.NewFSNotifyWatcher(cfg.Routes, skipDirs)
+		if err != nil {
+			poll := adapters.NewPollingWatcher(cfg.Routes, skipDirs, time.Duration(cfg.PollInterval)*time.Millisecond)
+			m.watcher = poll
+		} else {
+			m.watcher = fsn
+		}
 	}
-	m.watcher = w
+
 	container.Set(common.SvcWatcher, m.watcher)
 	return nil
 }

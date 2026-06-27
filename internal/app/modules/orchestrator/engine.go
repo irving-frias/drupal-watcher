@@ -21,6 +21,8 @@ type Engine struct {
 	SiteExecutorFactory func(site core.SiteInfo) core.CommandExecutor
 	Filters            []core.EventFilter
 	PostProcessors     []core.PostProcessor
+	LintCheckers       map[string]core.LintChecker
+	SkipLint           bool
 	EventBus           *eventbus.EventBus
 	Logger             *slog.Logger
 	Debounce           int
@@ -52,6 +54,8 @@ func NewEngine(cfg EngineConfig) *Engine {
 		SiteExecutorFactory: cfg.SiteExecutorFactory,
 		Filters:            cfg.Filters,
 		PostProcessors:     cfg.PostProcessors,
+		LintCheckers:       cfg.LintCheckers,
+		SkipLint:           cfg.SkipLint,
 		EventBus:           cfg.EventBus,
 		Logger:             cfg.Logger,
 		Debounce:           cfg.Debounce,
@@ -146,6 +150,21 @@ func (e *Engine) processBatch() {
 	changes := int64(len(files))
 	e.stats.changes.Add(changes)
 
+	if !e.SkipLint && len(e.LintCheckers) > 0 {
+		if fail := e.lintFiles(files); fail != nil {
+			e.Logger.Warn("lint failed", "file", fail.File, "error", fail.Error)
+			if e.EventBus != nil {
+				e.EventBus.Publish(eventbus.TopicError, core.EngineEvent{
+					Type:      core.EventError,
+					File:      fail.File,
+					Error:     fmt.Errorf("Lint: %s", fail.Error),
+					Timestamp: time.Now(),
+				})
+			}
+			return
+		}
+	}
+
 	seen := make(map[string]struct{})
 	var cmds []string
 	for f := range files {
@@ -199,6 +218,23 @@ func (e *Engine) processBatch() {
 		}
 		wg.Wait()
 	}
+}
+
+func (e *Engine) lintFiles(files map[string]struct{}) *core.LintResult {
+	for f := range files {
+		ext := filepath.Ext(f)
+		if ext == ".info" {
+			ext = ".yml"
+		}
+		checker, ok := e.LintCheckers[ext]
+		if !ok {
+			continue
+		}
+		if result := checker.Lint(f); result != nil {
+			return result
+		}
+	}
+	return nil
 }
 
 func (e *Engine) affectedSites(files map[string]struct{}) []core.SiteInfo {
@@ -331,6 +367,8 @@ type EngineConfig struct {
 	SiteExecutorFactory func(site core.SiteInfo) core.CommandExecutor
 	Filters             []core.EventFilter
 	PostProcessors      []core.PostProcessor
+	LintCheckers        map[string]core.LintChecker
+	SkipLint            bool
 	EventBus            *eventbus.EventBus
 	Logger              *slog.Logger
 	Debounce            int

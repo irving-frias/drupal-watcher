@@ -1,6 +1,7 @@
 package config
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -29,7 +30,11 @@ type Config struct {
 	CommandsPerPattern  map[string]string `json:"commandsPerPattern"`
 	DrupalRoot          *string           `json:"drupalRoot"`
 	Notify              bool              `json:"-"`
-	Sites               []string        `json:"sites,omitempty"`
+	Sites               []string          `json:"sites,omitempty"`
+	SkipLint            bool              `json:"skipLint,omitempty"`
+	LintCommands        map[string]string `json:"lintCommands,omitempty"`
+	WatchMode           string            `json:"watchMode,omitempty"`
+	PollInterval        int               `json:"pollInterval,omitempty"`
 	resolvedSites       []core.SiteInfo
 }
 
@@ -45,6 +50,10 @@ func (c Config) GetCommandsPerPattern() map[string]string { return c.CommandsPer
 func (c Config) GetNotify() bool                          { return c.Notify }
 func (c Config) GetPostClearCommands() []string          { return c.PostClearCommands }
 func (c Config) GetResolvedSites() []core.SiteInfo       { return c.resolvedSites }
+func (c Config) GetSkipLint() bool                       { return c.SkipLint }
+func (c Config) GetLintCommands() map[string]string      { return c.LintCommands }
+func (c Config) GetWatchMode() string                    { return c.WatchMode }
+func (c Config) GetPollInterval() int                    { return c.PollInterval }
 
 func (c *Config) SetResolvedSites(sites []core.SiteInfo) { c.resolvedSites = sites }
 
@@ -84,26 +93,39 @@ func (m *Manager) configPath(root string) string {
 	return filepath.Join(getRoot(root), "watcher.config.json")
 }
 
-func packageDir() string {
-	exe, err := os.Executable()
+func cacheDir() string {
+	cache, err := os.UserCacheDir()
 	if err != nil {
-		return "."
+		cache = "/tmp"
 	}
-	return filepath.Dir(exe)
+	dir := filepath.Join(cache, "drupal-watcher")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return filepath.Join(cache, "drupal-watcher")
+	}
+	return dir
+}
+
+func projectKey(root string) string {
+	p := root
+	if p == "" || p == "." {
+		exe, err := os.Executable()
+		if err == nil {
+			p = filepath.Dir(exe)
+		} else if wd, err := os.Getwd(); err == nil {
+			p = wd
+		}
+	}
+	abs, _ := filepath.Abs(p)
+	h := md5.Sum([]byte(abs))
+	return fmt.Sprintf("%x", h[:8])
 }
 
 func pidPath(root string) string {
-	if root != "" {
-		return filepath.Join(root, ".drupal-watcher.pid")
-	}
-	return filepath.Join(packageDir(), ".drupal-watcher.pid")
+	return filepath.Join(cacheDir(), ".drupal-watcher-"+projectKey(root)+".pid")
 }
 
 func starttimePath(root string) string {
-	if root != "" {
-		return filepath.Join(root, ".drupal-watcher.starttime")
-	}
-	return filepath.Join(packageDir(), ".drupal-watcher.starttime")
+	return filepath.Join(cacheDir(), ".drupal-watcher-"+projectKey(root)+".starttime")
 }
 
 func (m *Manager) DetectDrupalRoot(root string) *string {
@@ -178,6 +200,12 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 			".js":              "cc css-js",
 		},
 		DrupalRoot: &drupalRoot,
+		LintCommands: map[string]string{
+			".php":  "php -l",
+			".yml":  "php -l",
+			".yaml": "php -l",
+		},
+		PollInterval: 2000,
 	}
 }
 
@@ -277,6 +305,15 @@ func (m *Manager) ValidateConfig(cfg Config, root string) Config {
 	if cfg.DrupalRoot == nil {
 		cfg.DrupalRoot = def.DrupalRoot
 	}
+	if cfg.LintCommands == nil {
+		cfg.LintCommands = def.LintCommands
+	}
+	if cfg.WatchMode == "" {
+		cfg.WatchMode = "auto"
+	}
+	if cfg.PollInterval <= 0 {
+		cfg.PollInterval = def.PollInterval
+	}
 	// Normalize routes
 	for i, r := range cfg.Routes {
 		cfg.Routes[i] = strings.TrimRight(filepath.ToSlash(filepath.Clean(r)), "/")
@@ -348,14 +385,13 @@ func GetPidFile(root string) string {
 }
 
 func WritePid(root string) error {
-	if err := os.WriteFile(pidPath(root), []byte(strconv.Itoa(os.Getpid())), 0644); err != nil {
+	if err := os.WriteFile(pidPath(root), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
 		return err
 	}
 	return WriteStarttime(root)
 }
 
 func RemovePid(root string) error {
-	_ = os.WriteFile(pidPath(root), []byte(""), 0644)
 	err := os.Remove(pidPath(root))
 	if err != nil && !os.IsNotExist(err) {
 		pterm.Warning.Printfln("Failed to remove PID file: %v", err)
@@ -390,7 +426,7 @@ func CheckPid(root string) (interface{}, error) {
 // --- Start time ---
 
 func WriteStarttime(root string) error {
-	return os.WriteFile(starttimePath(root), []byte(strconv.FormatInt(nowMs(), 10)), 0644)
+	return os.WriteFile(starttimePath(root), []byte(strconv.FormatInt(nowMs(), 10)), 0600)
 }
 
 func GetStarttime(root string) (int64, error) {

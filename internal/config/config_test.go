@@ -255,7 +255,11 @@ func TestRouteNormalization(t *testing.T) {
 
 func TestGetPidFile(t *testing.T) {
 	path := config.GetPidFile("/test/root")
-	if !filepath.IsAbs(path) && path != "/test/root/.drupal-watcher.pid" {
-		// GetPidFile just delegates to pidPath
+	if !filepath.IsAbs(path) {
+		t.Errorf("expected absolute path, got %s", path)
+	}
+	base := filepath.Base(path)
+	if len(base) < 20 || base[:16] != ".drupal-watcher-" || base[len(base)-4:] != ".pid" {
+		t.Errorf("unexpected pid filename: %s", base)
 	}
 }

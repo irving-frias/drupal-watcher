@@ -37,11 +37,15 @@ func (m *Module) Init(container *app.Container) error {
 		adapters.NewDotfileFilter(),
 	}
 
+	lintCheckers := buildLintCheckers(cfg)
+
 	m.engine = NewEngine(EngineConfig{
 		Watcher:            watcher,
 		Executor:           exec,
 		Filters:            filters,
 		PostProcessors:     []core.PostProcessor{&builtin.DrushClear{}},
+		LintCheckers:       lintCheckers,
+		SkipLint:           cfg.SkipLint,
 		EventBus:           bus,
 		Logger:             adapters.NewDiscardLogger(),
 		Debounce:           cfg.Debounce,
@@ -70,6 +74,26 @@ func (m *Module) Start(ctx context.Context) error {
 }
 
 func (m *Module) Stop(ctx context.Context) error { return nil }
+
+func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
+	if cfg.SkipLint {
+		return nil
+	}
+	m := make(map[string]core.LintChecker)
+	exts := cfg.GetLintCommands()
+	if exts == nil {
+		return nil
+	}
+	for ext := range exts {
+		switch ext {
+		case ".php":
+			m[ext] = adapters.NewPhpLintChecker()
+		case ".yml", ".yaml":
+			m[ext] = adapters.NewYamlLintChecker()
+		}
+	}
+	return m
+}
 
 func stringJoin(elems []string, sep string) string {
 	if len(elems) == 0 {
