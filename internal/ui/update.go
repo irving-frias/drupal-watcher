@@ -28,6 +28,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		helpStyle = helpStyle.Width(cw - 4)
 
 		vpHeight := msg.Height - 9
+		if m.showStar {
+			vpHeight -= 3
+		}
+		if m.xdebugActive {
+			vpHeight -= 3
+		}
 		if vpHeight < 5 {
 			vpHeight = 5
 		}

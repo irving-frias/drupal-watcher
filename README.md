@@ -85,7 +85,7 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | Flag                    | Description                                   |
 |-------------------------|-----------------------------------------------|
 | `--root <path>`         | Drupal root directory (default: cwd)          |
-| `--debounce <ms>`       | Debounce interval (default: 150ms)            |
+| `--debounce <ms>`       | Debounce interval (default: 800ms)            |
 | `--no-dotfiles`         | Exclude dotfiles from watching                |
 | `--no-tui`              | Disable TUI, use interactive CLI mode         |
 | `--notify`              | Send desktop notification on cache clear      |
@@ -188,7 +188,7 @@ routes:
   - docroot/themes/custom
 patterns:
   - .php; .module; .inc; .yml; .html.twig; .twig; .css; .js
-debounce: 150
+debounce: 800
 commandsPerPattern:
   .html.twig: cc render
   .twig: cc render
@@ -260,7 +260,7 @@ Config via `watchMode` in `configs/config.yaml` (or legacy `watcher.config.json`
 
 1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
 2. Uses `fsnotify` to watch all subdirectories under the configured routes (falls back to polling if fsnotify fails, or use hybrid mode for both)
-3. When files change, debounces (default 150ms) collecting all changes into a batch
+3. When files change, debounces (default 800ms) collecting all changes into a batch. File changes appear instantly in the TUI event log — only the cache clear waits for the debounce window.
 4. **PHP and YAML files are linted** before running drush (`php -l` or `phpcs` for PHP, Go yaml parser for YAML). Lint results are cached with a SHA-1 content hash and 5-minute TTL — unchanged files are not re-checked. Only files inside watched `routes` are checked. If linting fails, the cache clear is skipped and the error (with file path) is displayed in the TUI.
 
    When `phpCsStandard` is set in the config, PHP files are checked with `phpcs` using Drupal coding standards (auto-detects `DrupalStrict` for Drupal 11, `Drupal` for Drupal 10). Requires `drupal/coder` and `squizlabs/php_codesniffer` installed via Composer.

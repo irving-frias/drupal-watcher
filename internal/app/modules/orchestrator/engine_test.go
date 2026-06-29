@@ -18,8 +18,8 @@ func testLogger() *slog.Logger {
 }
 
 func TestDefaultDebounce(t *testing.T) {
-	if d := DefaultDebounce(); d != 150 {
-		t.Errorf("expected 150, got %d", d)
+	if d := DefaultDebounce(); d != 800 {
+		t.Errorf("expected 800, got %d", d)
 	}
 }
 

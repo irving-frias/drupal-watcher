@@ -124,8 +124,21 @@ func (e *Engine) Run(ctx context.Context) error {
 			e.mu.Lock()
 			e.lastFile = event.Path
 			e.changedFiles[event.Path] = struct{}{}
+			dispFile := event.Path
 			e.mu.Unlock()
 			e.pending.Store(true)
+
+			// Publish file.change immediately so TUI shows it right away
+			if e.EventBus != nil {
+				e.stats.changes.Add(1)
+				metrics.RecordChange()
+				e.EventBus.Publish(eventbus.TopicFileChange, core.EngineEvent{
+					Type:      core.EventChange,
+					File:      dispFile,
+					Changes:   1,
+					Timestamp: time.Now(),
+				})
+			}
 
 			e.mu.Lock()
 			if e.timer != nil {
@@ -221,8 +234,6 @@ func (e *Engine) processBatch() {
 	}
 
 	changes := int64(len(files))
-	e.stats.changes.Add(changes)
-	metrics.RecordChange()
 
 	if !e.SkipLint && len(e.LintCheckers) > 0 {
 		if fail := e.lintFiles(files); fail != nil {
@@ -239,34 +250,17 @@ func (e *Engine) processBatch() {
 		}
 	}
 
-	seen := make(map[string]struct{})
-	var cmds []string
-	for f := range files {
-		args := resolveCommand(f, e.CommandsPerPattern)
-		cmdStr := strings.Join(args, " ")
-		if _, ok := seen[cmdStr]; !ok {
-			seen[cmdStr] = struct{}{}
-			cmds = append(cmds, cmdStr)
-		}
-	}
-
+	e.mu.Lock()
+	cmds := e.resolveCommands(files)
 	cmdStr := strings.Join(cmds, " + ")
 	hasCR := e.hasCRCommand(cmds)
+	e.mu.Unlock()
 
 	e.Logger.Info("change detected",
 		"file", dispFile,
 		"changes", changes,
 		"commands", cmdStr,
 	)
-
-	if e.EventBus != nil {
-		e.EventBus.Publish(eventbus.TopicFileChange, core.EngineEvent{
-			Type:      core.EventChange,
-			File:      dispFile,
-			Changes:   int(changes),
-			Timestamp: time.Now(),
-		})
-	}
 
 	if hasCR && e.LazyRebuildMs > 0 {
 		e.scheduleLazyRebuild(files, dispFile)
@@ -517,7 +511,7 @@ func (e *Engine) String() string {
 }
 
 func DefaultDebounce() int {
-	return 150
+	return 800
 }
 
 type EngineConfig struct {

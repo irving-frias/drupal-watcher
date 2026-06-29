@@ -188,7 +188,7 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 	return Config{
 		Routes:          []string{drupalRoot + "/modules/custom", drupalRoot + "/themes/custom"},
 		Patterns:        utils.DefaultPatterns,
-		Debounce:        150,
+		Debounce:        800,
 		DrushCmd:        nil,
 		DrushCommand:    "cr",
 		DrushArgs:       []string{"--quiet", "--no-ansi"},
