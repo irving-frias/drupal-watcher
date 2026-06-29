@@ -11,3 +11,7 @@ type tickMsg time.Time
 type engineEventMsg struct {
 	Event core.EngineEvent
 }
+
+type fsCompleteMsg struct {
+	completions []string
+}

@@ -33,13 +33,21 @@ cd /path/to/drupal/project
 vendor/bin/drupal-watcher start
 ```
 
-On first run, a `configs/config.yaml` is auto-created with defaults. Edit it to customize routes, patterns, and cache clear commands. You can also override any config value via environment variables (e.g. `DRUPAL_WATCHER_DEBOUNCE=500`).
+On first run, a `configs/config.yaml` is auto-created with defaults. Edit it to customize routes, patterns, and cache clear commands. You can also override any config value via environment variables (e.g. `DRUPAL_WATCHER_DEBOUNCE=150`).
+
+You can validate your configuration and environment with:
+
+```bash
+vendor/bin/drupal-watcher validate
+```
+
+This checks YAML syntax, Drupal root, watched routes, drush, PHPCS, sites, and `commandsPerPattern`.
 
 The TUI opens automatically. Events appear in real-time, and you can type commands at the prompt:
 
 ```
   ● drupal-watcher  PID: 12345  Uptime: 5m
-  Memory: 2.1 MB ▂▃▄▅▆▇█  |  Changes: 14  |  Clears: 3
+  Memory: 2.1 MB ▂▃▄▅▆▇█  |  Changes: 14  |  Clears: 3  |  site1: 2  site2: 1
 
   ┌──────────────────────────────────────────────────────────────┐
   │ 10:00:01  ℹ  Waiting for file changes...                     │
@@ -61,6 +69,7 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | Command                    | Description                            |
 |----------------------------|----------------------------------------|
 | `start`                    | Start watching (opens TUI by default)  |
+| `validate`                 | Validate config, paths, drush, PHPCS   |
 | `tui`                      | Terminal UI (default for `start`)      |
 | `status`                   | Show running status and uptime         |
 | `list` / `config`          | Display current configuration          |
@@ -76,7 +85,7 @@ Use `--no-tui` to run the classic interactive CLI instead.
 | Flag                    | Description                                   |
 |-------------------------|-----------------------------------------------|
 | `--root <path>`         | Drupal root directory (default: cwd)          |
-| `--debounce <ms>`       | Debounce interval (default: 800ms)            |
+| `--debounce <ms>`       | Debounce interval (default: 150ms)            |
 | `--no-dotfiles`         | Exclude dotfiles from watching                |
 | `--no-tui`              | Disable TUI, use interactive CLI mode         |
 | `--notify`              | Send desktop notification on cache clear      |
@@ -124,13 +133,35 @@ While the TUI is running, type commands at the prompt:
 
 | Command                    | Description                            |
 |----------------------------|----------------------------------------|
+| Command                    | Description                            |
+|----------------------------|----------------------------------------|
 | `status`                   | Show stats, memory, and kernel watches |
-| `help`                     | Show available commands                |
+| `stats`                    | Clear counts per site                  |
+| `filter <site>`            | Filter events by site name             |
+| `help`                     | Show available commands and keybinds   |
 | `star`                     | Open GitHub repo in browser            |
 | `dismiss`                  | Hide the star banner permanently       |
+| `dashboard`                | Toggle live dashboard panel            |
 | `stop` / `quit` / `exit`   | Stop the watcher                       |
 
-Press `Ctrl+C` or `Ctrl+D` to quit at any time.
+### TUI keybinds
+
+| Key       | Description                                |
+|-----------|--------------------------------------------|
+| `Ctrl+C` / `Ctrl+D` | Quit                              |
+| `?`       | Toggle help / Esc to close                 |
+| `↑` / `↓` | Navigate command history                   |
+| `PgUp` / `PgDn` | Page up/down in event log              |
+| `Home`    | Scroll to top                              |
+| `End`     | Toggle auto-scroll                         |
+| `Tab`     | Complete commands / site names             |
+| `Insert`  | File system path scan for autocomplete     |
+| `Delete`  | Cancel pending completions                 |
+| `F2`      | Open interactive filter panel (extension)  |
+| `r`       | Get a context-aware training suggestion    |
+| `Ctrl+X`  | Disable Xdebug if detected                 |
+
+The status line shows memory usage with a live sparkline, change/clear counters, and per-site clear breakdowns when multiple sites are active.
 
 ## Interactive CLI Commands
 
@@ -157,7 +188,7 @@ routes:
   - docroot/themes/custom
 patterns:
   - .php; .module; .inc; .yml; .html.twig; .twig; .css; .js
-debounce: 800
+debounce: 150
 commandsPerPattern:
   .html.twig: cc render
   .twig: cc render
@@ -229,15 +260,16 @@ Config via `watchMode` in `configs/config.yaml` (or legacy `watcher.config.json`
 
 1. `drupal-watcher start` loads config, detects the Drupal docroot, and writes a PID file
 2. Uses `fsnotify` to watch all subdirectories under the configured routes (falls back to polling if fsnotify fails, or use hybrid mode for both)
-3. When files change, debounces (default 800ms) collecting all changes into a batch
-4. **PHP and YAML files are linted** before running drush (`php -l` or `phpcs` for PHP, Go yaml parser for YAML). Only files inside watched `routes` are checked. If linting fails, the cache clear is skipped and the error (with file path) is displayed in the TUI.
+3. When files change, debounces (default 150ms) collecting all changes into a batch
+4. **PHP and YAML files are linted** before running drush (`php -l` or `phpcs` for PHP, Go yaml parser for YAML). Lint results are cached with a SHA-1 content hash and 5-minute TTL — unchanged files are not re-checked. Only files inside watched `routes` are checked. If linting fails, the cache clear is skipped and the error (with file path) is displayed in the TUI.
 
    When `phpCsStandard` is set in the config, PHP files are checked with `phpcs` using Drupal coding standards (auto-detects `DrupalStrict` for Drupal 11, `Drupal` for Drupal 10). Requires `drupal/coder` and `squizlabs/php_codesniffer` installed via Composer.
 5. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
-6. If any change requires a full rebuild (`cr`), it overrides all other commands
+6. If any change requires a full rebuild (`cr`), it applies a **lazy rebuild** — a separate 2-second debounce timer accumulates all changes and executes a single `drush cr` at the end of the burst, avoiding redundant full rebuilds
 7. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
 8. A health file is written to `~/.cache/drupal-watcher/health` every 30s (cleaned up on shutdown)
-9. `Ctrl+C` (or `SIGTERM`) cancels the context, stops all modules with a 10s timeout, removes PID and health files
+9. Metrics (changes, clears, errors per minute) are tracked in-memory for the training mode and `stats` command
+10. `Ctrl+C` (or `SIGTERM`) cancels the context, stops all modules with a 10s timeout, removes PID and health files
 
 ### Drush optimizations
 
@@ -247,7 +279,9 @@ The watcher applies several optimizations to minimize overhead:
 |---|---|
 | **Binary caching** | Resolved `drush` path cached after first lookup, avoids repeated `$PATH` scans |
 | **Batch cache clears** | Multiple `cc <type>` commands merged into a single `drush cc type1,type2,...` call |
-| **`cr` overrides** | If any change requires `drush cr`, all other commands are skipped |
+| **`cr` overrides** | If any change requires `drush cr`, a 2-second lazy rebuild timer accumulates all changes first |
+| **Lint cache** | SHA-1 content hash avoids re-linting unchanged files (5-minute TTL, max 1000 entries) |
+| **Parallel multi-site** | Per-site `drush` runs in a worker pool (up to 3 concurrent) for multi-site projects |
 | **Quiet mode** | Drush runs with `--quiet --no-ansi` by default for minimal output overhead |
 
 On large debounce windows, rapid changes to different file types share a single PHP bootstrap instead of spawning separate processes.
@@ -417,6 +451,10 @@ internal/
   config/                → Config management (YAML + env vars), Drupal root detection, PID files
   health/                → Liveness check (timestamp file every 30s)
   drush/                 → Drush resolution, execution, health checks
+  metrics/               → Runtime statistics (changes, clears, errors per minute)
+  training/              → Context-aware training suggestions (training.json)
+  validate/              → Config and environment validation (`validate` command)
+  xdebug/                → Xdebug detection and disable (Ctrl+X)
   utils/                 → Color helpers, format utilities
 
 pkg/
@@ -431,6 +469,7 @@ pkg/
     regex_filter.go      → Pattern/Exclude/Dotfile filters
     php_lint.go          → core.LintChecker via php -l
     yaml_lint.go         → core.LintChecker via Go yaml parser
+    lint_cache.go        → Caching wrapper for LintChecker (SHA-1, 5min TTL)
     slog_logger.go       → Structured logger factory
 ```
 

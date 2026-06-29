@@ -176,6 +176,8 @@ func (m *Model) renderHelp() string {
 	b.WriteString(fmt.Sprintf("\n  %s  <site>  Filter events by site name", green.Render("filter")))
 	b.WriteString(fmt.Sprintf("\n  %s         Show this help", green.Render("help")))
 	b.WriteString(fmt.Sprintf("\n  %s       Stop the watcher and exit", green.Render("stop")))
+	b.WriteString(fmt.Sprintf("\n  %s         Open GitHub star page", green.Render("star")))
+	b.WriteString(fmt.Sprintf("\n  %s      Permanently dismiss star banner", green.Render("dismiss")))
 	b.WriteString("\n")
 	b.WriteString("\n" + dim.Render("  Keys"))
 	b.WriteString("\n" + dim.Render("  ───────────────────────────────────"))
@@ -183,10 +185,15 @@ func (m *Model) renderHelp() string {
 	b.WriteString(fmt.Sprintf("\n  %s   Page up/down in event log", dim.Render("pgup / pgdn")))
 	b.WriteString(fmt.Sprintf("\n  %s    Scroll to top", dim.Render("home")))
 	b.WriteString(fmt.Sprintf("\n  %s   Toggle auto-scroll", dim.Render("end")))
-	b.WriteString(fmt.Sprintf("\n  %s         Toggle this help", dim.Render("?")))
+	b.WriteString(fmt.Sprintf("\n  %s         Toggle this help / Esc to close", dim.Render("?")))
 	b.WriteString(fmt.Sprintf("\n  %s    Navigate command history", dim.Render("↑ / ↓")))
 	b.WriteString(fmt.Sprintf("\n  %s         Mouse wheel to scroll", dim.Render("scroll")))
 	b.WriteString(fmt.Sprintf("\n  %s Tab   Complete commands / site names", dim.Render("tab")))
+	b.WriteString(fmt.Sprintf("\n  %s  Insert  File system path scan completion", dim.Render("insert")))
+	b.WriteString(fmt.Sprintf("\n  %s Delete  Cancel pending completions", dim.Render("delete")))
+	b.WriteString(fmt.Sprintf("\n  %s   F2     Open interactive filter panel", dim.Render("f2")))
+	b.WriteString(fmt.Sprintf("\n  %s   r      Context-aware training suggestion", dim.Render("r")))
+	b.WriteString(fmt.Sprintf("\n  %s Ctrl+X   Disable Xdebug if detected", dim.Render("ctrl+x")))
 	b.WriteString("\n\n" + dim.Render("  Press ? or Esc to close help"))
 	return b.String()
 }
@@ -199,6 +206,11 @@ func (m *Model) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, status, content)
 	}
 
+	if m.filterPanelOpen {
+		panel := m.renderFilterPanel()
+		return lipgloss.JoinVertical(lipgloss.Left, status, panel)
+	}
+
 	events := m.viewport.View()
 	events = eventsStyle.Render(events)
 
@@ -208,7 +220,29 @@ func (m *Model) View() string {
 	if m.showStar {
 		parts = append(parts, starStyle.Render(m.renderStarBanner()))
 	}
+	if m.xdebugActive {
+		parts = append(parts, xdebugStyle.Render(m.renderXdebugBanner()))
+	}
 	parts = append(parts, input)
 
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+func (m *Model) renderXdebugBanner() string {
+	return fmt.Sprintf("⚠ Xdebug is active — performance may be degraded  %s", dim.Render("[Ctrl+X to disable]"))
+}
+
+func (m *Model) renderFilterPanel() string {
+	var b strings.Builder
+	b.WriteString(bold.Render("  Filter by extension"))
+	b.WriteString("\n" + dim.Render("  ───────────────────────────────────"))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("\n  %s", dim.Render("Type an extension like .php, .twig, .yml")))
+	b.WriteString("\n  " + dim.Render("Press Enter to apply, Esc to cancel"))
+	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("\n  %s", m.filterInput.View()))
+	if m.siteFilter != "" {
+		b.WriteString(fmt.Sprintf("\n\n  Current: %s", cyan.Render(m.siteFilter)))
+	}
+	return b.String()
 }

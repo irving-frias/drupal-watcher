@@ -16,12 +16,22 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/health"
+	"github.com/irving-frias/drupal-watcher/internal/validate"
+	"github.com/pterm/pterm"
 )
 
 func main() {
 	args := os.Args[1:]
 	if len(args) > 0 {
 		arg := args[0]
+		if arg == "validate" {
+			root := "."
+			if len(args) > 1 {
+				root = args[1]
+			}
+			runValidate(root)
+			return
+		}
 		if arg == "--version" || arg == "-V" || arg == "version" {
 			fmt.Printf("drupal-watcher %s (go %s)\n", common.PkgVersion(), strings.TrimPrefix(runtime.Version(), "go"))
 			return
@@ -67,16 +77,31 @@ func main() {
 }
 
 func isCommand(s string) bool {
-	return s == "start" || s == "watch"
+	return s == "start" || s == "watch" || s == "validate"
+}
+
+func runValidate(root string) {
+	result := validate.Validate(root)
+	for _, e := range result.Entries {
+		if e.OK {
+			pterm.Success.Printfln("  %s: %s", e.Field, e.Message)
+		} else {
+			pterm.Error.Printfln("  %s: %s", e.Field, e.Message)
+		}
+	}
+	if !result.Pass {
+		os.Exit(1)
+	}
 }
 
 func printUsage() {
 	fmt.Println(`Drupal Watcher — file watcher with auto drush cache clears
 
 Usage:
-  modular-watcher [root]     Start watching the given Drupal root (default: .)
-  modular-watcher version    Print version
-  modular-watcher help       Show this help
+  modular-watcher [root]       Start watching (default: .)
+  modular-watcher validate     Validate configuration and environment
+  modular-watcher version      Print version
+  modular-watcher help         Show this help
 
 The TUI opens automatically. Press Ctrl+C or Ctrl+D to quit.`)
 }

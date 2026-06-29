@@ -1,14 +1,19 @@
 package ui
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/irving-frias/drupal-watcher/internal/training"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/irving-frias/drupal-watcher/internal/xdebug"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
@@ -31,16 +36,112 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Width = cw - 6
 		return m, nil
 
+	case fsCompleteMsg:
+		m.fsCompletions = msg.completions
+		m.fsCompleteIdx = 0
+		return m, nil
+
 	case tea.KeyMsg:
+		if m.filterPanelOpen {
+			switch msg.String() {
+			case "enter":
+				val := strings.TrimSpace(m.filterInput.Value())
+				if val != "" {
+					m.completions = nil
+					m.fsCompletions = nil
+					m.input.SetValue("filter " + val)
+					m.input.CursorEnd()
+				}
+				m.filterPanelOpen = false
+				m.filterInput.Blur()
+				m.filterInput.SetValue("")
+				return m, nil
+			case "esc":
+				m.filterPanelOpen = false
+				m.filterInput.Blur()
+				m.filterInput.SetValue("")
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.filterInput, cmd = m.filterInput.Update(msg)
+				return m, cmd
+			}
+		}
+
 		switch msg.String() {
 		case "ctrl+c", "ctrl+d":
 			return m, tea.Quit
 
+		case "ctrl+x":
+			if m.xdebugActive {
+				go xdebug.Disable()
+				m.xdebugActive = false
+				m.pushEvent(eventLine{
+					Timestamp: time.Now().Format("15:04:05"),
+					Content:   "Xdebug has been disabled",
+					Style:     successStyle,
+				})
+			}
+			return m, nil
+
+		case "f2":
+			m.filterPanelOpen = !m.filterPanelOpen
+			if m.filterPanelOpen {
+				m.filterInput.Focus()
+			} else {
+				m.filterInput.Blur()
+			}
+			return m, nil
+
+		case "insert":
+			m.completions = nil
+			m.fsCompletions = nil
+			m.input.SetValue(m.input.Value() + " .")
+			m.input.CursorEnd()
+			return m, scanFSForCompletion(m.root)
+
+		case "delete", "ctrl+backspace":
+			if m.completions != nil || m.fsCompletions != nil {
+				m.completions = nil
+				m.fsCompletions = nil
+				m.completionIdx = 0
+				m.fsCompleteIdx = 0
+			}
+			return m, nil
+
 		case "?":
+			if m.filterPanelOpen {
+				m.filterPanelOpen = false
+				m.filterInput.Blur()
+			}
 			m.showHelp = !m.showHelp
 			return m, nil
 
+		case "r":
+			if m.filterPanelOpen || m.showHelp {
+				return m, nil
+			}
+			m.trainingSuggestion = training.Random()
+			if m.trainingSuggestion == nil {
+				m.trainingSuggestion = &training.Suggestion{
+					Title:       "No suggestion",
+					Description: "Keep working!",
+				}
+			}
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   fmt.Sprintf("💡 %s: %s", m.trainingSuggestion.Title, m.trainingSuggestion.Description),
+				Style:     infoStyle,
+			})
+			return m, nil
+
 		case "esc":
+			if m.filterPanelOpen {
+				m.filterPanelOpen = false
+				m.filterInput.Blur()
+				m.filterInput.SetValue("")
+				return m, nil
+			}
 			if m.showHelp {
 				m.showHelp = false
 				return m, nil
@@ -200,6 +301,44 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func scanFSForCompletion(root string) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+		done := make(chan []string, 1)
+		go func() {
+			var dirs []string
+			filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+				if err != nil {
+					return filepath.SkipDir
+				}
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if d.IsDir() && strings.HasPrefix(d.Name(), ".") && d.Name() != "." {
+					return filepath.SkipDir
+				}
+				if !d.IsDir() {
+					return nil
+				}
+				rel, _ := filepath.Rel(root, path)
+				if rel == "." {
+					return nil
+				}
+				dirs = append(dirs, "./"+rel+"/")
+				return nil
+			})
+			done <- dirs
+		}()
+		select {
+		case dirs := <-done:
+			return fsCompleteMsg{completions: dirs}
+		case <-ctx.Done():
+			return fsCompleteMsg{completions: nil}
+		}
+	}
+}
+
 func openURL(url string) tea.Cmd {
 	return func() tea.Msg {
 		var cmd *exec.Cmd
@@ -221,6 +360,13 @@ func openURL(url string) tea.Cmd {
 func (m *Model) completeInput() {
 	input := strings.TrimSpace(m.input.Value())
 	parts := strings.Fields(input)
+
+	if m.fsCompletions != nil {
+		m.fsCompleteIdx = (m.fsCompleteIdx + 1) % len(m.fsCompletions)
+		m.input.SetValue(m.fsCompletions[m.fsCompleteIdx])
+		m.input.CursorEnd()
+		return
+	}
 
 	if m.completions != nil {
 		m.completionIdx = (m.completionIdx + 1) % len(m.completions)

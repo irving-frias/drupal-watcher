@@ -20,6 +20,14 @@ var (
 			BorderForeground(lipgloss.Color("220")).
 			Padding(0, 1)
 
+	xdebugStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("214")).
+			Padding(0, 1).
+			Foreground(lipgloss.Color("196"))
+
+
+
 	cmdStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("64")).

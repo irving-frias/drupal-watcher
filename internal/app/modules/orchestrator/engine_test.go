@@ -18,8 +18,8 @@ func testLogger() *slog.Logger {
 }
 
 func TestDefaultDebounce(t *testing.T) {
-	if d := DefaultDebounce(); d != 800 {
-		t.Errorf("expected 800, got %d", d)
+	if d := DefaultDebounce(); d != 150 {
+		t.Errorf("expected 150, got %d", d)
 	}
 }
 
@@ -341,7 +341,7 @@ func TestStartTime(t *testing.T) {
 	before := time.Now()
 	e := NewEngine(EngineConfig{
 		Logger:   nil,
-		Debounce: 800,
+		Debounce: 150,
 	})
 	after := time.Now()
 	st := e.StartTime()
@@ -352,8 +352,11 @@ func TestStartTime(t *testing.T) {
 
 func TestValidateEngineConfig(t *testing.T) {
 	cfg := ValidateEngineConfig(EngineConfig{})
-	if cfg.Debounce != 800 {
-		t.Errorf("expected debounce 800, got %d", cfg.Debounce)
+	if cfg.Debounce != 150 {
+		t.Errorf("expected debounce 150, got %d", cfg.Debounce)
+	}
+	if cfg.LazyRebuildMs != 2000 {
+		t.Errorf("expected lazyRebuildMs 2000, got %d", cfg.LazyRebuildMs)
 	}
 	if cfg.Logger == nil {
 		t.Error("expected non-nil logger after validation")

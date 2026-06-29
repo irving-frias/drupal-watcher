@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/irving-frias/drupal-watcher/internal/app/eventbus"
+	"github.com/irving-frias/drupal-watcher/internal/metrics"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
@@ -26,6 +27,7 @@ type Engine struct {
 	EventBus           *eventbus.EventBus
 	Logger             *slog.Logger
 	Debounce           int
+	LazyRebuildMs      int
 	Patterns           []string
 	ExcludePatterns    []string
 	CommandsPerPattern map[string]string
@@ -40,6 +42,11 @@ type Engine struct {
 	lastFile    string
 	timer       *time.Timer
 
+	lazyMu       sync.Mutex
+	lazyPending  bool
+	lazyTimer    *time.Timer
+	lazyFiles    map[string]struct{}
+
 	startTime time.Time
 
 	stats struct {
@@ -49,6 +56,10 @@ type Engine struct {
 }
 
 func NewEngine(cfg EngineConfig) *Engine {
+	lr := cfg.LazyRebuildMs
+	if lr <= 0 {
+		lr = 2000
+	}
 	return &Engine{
 		Watcher:            cfg.Watcher,
 		Executor:           cfg.Executor,
@@ -60,6 +71,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		EventBus:           cfg.EventBus,
 		Logger:             cfg.Logger,
 		Debounce:           cfg.Debounce,
+		LazyRebuildMs:      lr,
 		Patterns:           cfg.Patterns,
 		ExcludePatterns:    cfg.ExcludePatterns,
 		CommandsPerPattern: cfg.CommandsPerPattern,
@@ -67,6 +79,7 @@ func NewEngine(cfg EngineConfig) *Engine {
 		DrupalRoot:         cfg.DrupalRoot,
 		Routes:             cfg.Routes,
 		changedFiles:       make(map[string]struct{}),
+		lazyFiles:          make(map[string]struct{}),
 		startTime:          time.Now(),
 	}
 }
@@ -90,6 +103,7 @@ func (e *Engine) Run(ctx context.Context) error {
 				return nil
 			}
 			e.Logger.Error("watcher error", "error", err)
+			metrics.RecordError()
 			if e.EventBus != nil {
 				e.EventBus.Publish(eventbus.TopicError, core.EngineEvent{
 					Type:      core.EventError,
@@ -138,6 +152,63 @@ func (e *Engine) shouldProcess(event core.FileEvent) bool {
 	return true
 }
 
+func (e *Engine) hasCRCommand(cmds []string) bool {
+	for _, c := range cmds {
+		if c == "cr" || c == "cache:rebuild" {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *Engine) scheduleLazyRebuild(files map[string]struct{}, dispFile string) {
+	e.lazyMu.Lock()
+	defer e.lazyMu.Unlock()
+
+	for f := range files {
+		e.lazyFiles[f] = struct{}{}
+	}
+
+	if e.lazyTimer != nil {
+		e.lazyTimer.Stop()
+	}
+	e.lazyPending = true
+	e.lazyTimer = time.AfterFunc(time.Duration(e.LazyRebuildMs)*time.Millisecond, func() {
+		e.lazyMu.Lock()
+		if !e.lazyPending {
+			e.lazyMu.Unlock()
+			return
+		}
+		e.lazyPending = false
+		files := e.lazyFiles
+		e.lazyFiles = make(map[string]struct{})
+		lastFile := dispFile
+		e.lazyMu.Unlock()
+
+		e.executeCacheClear(files, lastFile)
+	})
+}
+
+func (e *Engine) flushLazyRebuild() {
+	e.lazyMu.Lock()
+	if e.lazyTimer != nil {
+		e.lazyTimer.Stop()
+		e.lazyTimer = nil
+	}
+	if !e.lazyPending {
+		e.lazyMu.Unlock()
+		return
+	}
+	e.lazyPending = false
+	files := e.lazyFiles
+	e.lazyFiles = make(map[string]struct{})
+	e.lazyMu.Unlock()
+
+	if len(files) > 0 {
+		e.executeCacheClear(files, "")
+	}
+}
+
 func (e *Engine) processBatch() {
 	e.mu.Lock()
 	files := e.changedFiles
@@ -151,6 +222,7 @@ func (e *Engine) processBatch() {
 
 	changes := int64(len(files))
 	e.stats.changes.Add(changes)
+	metrics.RecordChange()
 
 	if !e.SkipLint && len(e.LintCheckers) > 0 {
 		if fail := e.lintFiles(files); fail != nil {
@@ -179,6 +251,7 @@ func (e *Engine) processBatch() {
 	}
 
 	cmdStr := strings.Join(cmds, " + ")
+	hasCR := e.hasCRCommand(cmds)
 
 	e.Logger.Info("change detected",
 		"file", dispFile,
@@ -195,30 +268,85 @@ func (e *Engine) processBatch() {
 		})
 	}
 
+	if hasCR && e.LazyRebuildMs > 0 {
+		e.scheduleLazyRebuild(files, dispFile)
+		return
+	}
+
+	e.executeCacheClear(files, dispFile)
+}
+
+func (e *Engine) executeCacheClear(files map[string]struct{}, dispFile string) {
+	e.mu.Lock()
+	cmds := e.resolveCommands(files)
+	cmdStr := strings.Join(cmds, " + ")
+	e.mu.Unlock()
+
+	if len(cmds) == 0 {
+		return
+	}
+
+	changes := int64(len(files))
 	affected := e.affectedSites(files)
 
 	if len(affected) == 0 {
 		result := e.Executor.Execute(context.Background(), cmds, e.DrupalRoot)
 		e.stats.clears.Add(1)
+		metrics.RecordClear("")
 		e.runPostProcessors(context.Background(), core.FileEvent{Path: dispFile}, result)
 		e.publishDrushResult(result, cmdStr, int(changes), dispFile, "")
 	} else {
-		var wg sync.WaitGroup
-		for _, site := range affected {
-			wg.Add(1)
-			go func(s core.SiteInfo) {
-				defer wg.Done()
+		e.executeMultiSite(affected, cmds, cmdStr, int(changes), dispFile)
+	}
+}
+
+func (e *Engine) resolveCommands(files map[string]struct{}) []string {
+	seen := make(map[string]struct{})
+	var cmds []string
+	for f := range files {
+		args := resolveCommand(f, e.CommandsPerPattern)
+		cmdStr := strings.Join(args, " ")
+		if _, ok := seen[cmdStr]; !ok {
+			seen[cmdStr] = struct{}{}
+			cmds = append(cmds, cmdStr)
+		}
+	}
+	return cmds
+}
+
+func (e *Engine) executeMultiSite(sites []core.SiteInfo, cmds []string, cmdStr string, changes int, dispFile string) {
+	concurrency := 3
+	type siteJob struct {
+		site core.SiteInfo
+	}
+	jobs := make(chan siteJob, len(sites))
+	results := make(chan struct{}, len(sites))
+
+	for w := 0; w < concurrency; w++ {
+		go func() {
+			for j := range jobs {
+				s := j.site
 				exec := e.Executor
 				if e.SiteExecutorFactory != nil {
 					exec = e.SiteExecutorFactory(s)
 				}
 				result := exec.Execute(context.Background(), cmds, e.DrupalRoot)
 				e.stats.clears.Add(1)
+				metrics.RecordClear(s.Name)
 				e.runPostProcessors(context.Background(), core.FileEvent{Path: dispFile}, result)
-				e.publishDrushResult(result, cmdStr, int(changes), dispFile, s.Name)
-			}(site)
-		}
-		wg.Wait()
+				e.publishDrushResult(result, cmdStr, changes, dispFile, s.Name)
+				results <- struct{}{}
+			}
+		}()
+	}
+
+	for _, site := range sites {
+		jobs <- siteJob{site: site}
+	}
+	close(jobs)
+
+	for i := 0; i < len(sites); i++ {
+		<-results
 	}
 }
 
@@ -389,7 +517,7 @@ func (e *Engine) String() string {
 }
 
 func DefaultDebounce() int {
-	return 800
+	return 150
 }
 
 type EngineConfig struct {
@@ -403,6 +531,7 @@ type EngineConfig struct {
 	EventBus            *eventbus.EventBus
 	Logger              *slog.Logger
 	Debounce            int
+	LazyRebuildMs       int
 	Patterns            []string
 	ExcludePatterns     []string
 	CommandsPerPattern  map[string]string
@@ -414,6 +543,9 @@ type EngineConfig struct {
 func ValidateEngineConfig(cfg EngineConfig) EngineConfig {
 	if cfg.Debounce <= 0 {
 		cfg.Debounce = DefaultDebounce()
+	}
+	if cfg.LazyRebuildMs <= 0 {
+		cfg.LazyRebuildMs = 2000
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()

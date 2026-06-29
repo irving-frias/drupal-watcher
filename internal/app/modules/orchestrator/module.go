@@ -9,10 +9,15 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/app/eventbus"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/hooks/builtin"
+	"github.com/irving-frias/drupal-watcher/internal/metrics"
 	"github.com/irving-frias/drupal-watcher/pkg/adapters"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 	"github.com/pterm/pterm"
 )
+
+func init() {
+	metrics.Init()
+}
 
 type Module struct {
 	engine *Engine
@@ -38,6 +43,7 @@ func (m *Module) Init(container *app.Container) error {
 	}
 
 	lintCheckers := buildLintCheckers(cfg)
+	lintCheckers = wrapWithCache(lintCheckers)
 
 	m.engine = NewEngine(EngineConfig{
 		Watcher:            watcher,
@@ -124,6 +130,14 @@ func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 	}
 
 	return m
+}
+
+func wrapWithCache(checkers map[string]core.LintChecker) map[string]core.LintChecker {
+	wrapped := make(map[string]core.LintChecker, len(checkers))
+	for ext, chk := range checkers {
+		wrapped[ext] = adapters.NewCachingLintChecker(chk)
+	}
+	return wrapped
 }
 
 func stringJoin(elems []string, sep string) string {

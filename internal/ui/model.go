@@ -6,27 +6,34 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/irving-frias/drupal-watcher/internal/training"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
+	"github.com/irving-frias/drupal-watcher/internal/xdebug"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
-func dismissedPath(root string) string {
-	dir, err := os.UserCacheDir()
+func cacheDir() string {
+	cache, err := os.UserCacheDir()
 	if err != nil {
-		dir = "/tmp"
+		cache = "/tmp"
 	}
+	return filepath.Join(cache, "drupal-watcher")
+}
+
+func dismissedPath(root string) string {
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return ""
 	}
 	h := md5.Sum([]byte(abs))
-	return filepath.Join(dir, "drupal-watcher", fmt.Sprintf(".drupal-watcher-%x.dismissed", h[:8]))
+	return filepath.Join(cacheDir(), fmt.Sprintf(".drupal-watcher-%x.dismissed", h[:8]))
 }
 
 func isStarDismissed(root string) bool {
@@ -91,12 +98,23 @@ type Model struct {
 	siteFilter string
 	siteClears map[string]int64
 
-	showHelp     bool
-	showStar     bool
-	root         string
-	memHistory   []float64
-	completions  []string
+	showHelp      bool
+	showStar      bool
+	xdebugActive  bool
+	xdebugMsg     string
+	root          string
+	memHistory    []float64
+	completions   []string
 	completionIdx int
+
+	fsCompletions  []string
+	fsCompleteIdx  int
+
+	filterPanelOpen bool
+	filterInput     textinput.Model
+
+	trainingSuggestion *training.Suggestion
+	trainingInitOnce   sync.Once
 }
 
 func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *Model {
@@ -106,24 +124,45 @@ func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *
 	ti.CharLimit = 256
 	ti.Width = 50
 
+	xd := xdebug.Detect()
+	xdMsg := ""
+	if xd {
+		xdMsg = "Ctrl+X to disable"
+	}
+
+	fi := textinput.New()
+	fi.Placeholder = "type to filter extensions (e.g. .php, .twig)..."
+	fi.CharLimit = 100
+	fi.Width = 30
+
 	return &Model{
-		eventChan:  eventChan,
-		engineInfo: info,
-		events:     make([]eventLine, 0, eventBufferSize),
-		eventCap:   eventBufferSize,
-		viewport:   viewport.New(78, 10),
-		input:      ti,
-		width:      80,
-		historyIdx: -1,
-		autoScroll: true,
-		showStar:   !isStarDismissed(root),
-		root:       root,
-		siteClears: make(map[string]int64),
-		memHistory: make([]float64, 0, sparklineSize),
+		eventChan:    eventChan,
+		engineInfo:   info,
+		events:       make([]eventLine, 0, eventBufferSize),
+		eventCap:     eventBufferSize,
+		viewport:     viewport.New(78, 10),
+		input:        ti,
+		width:        80,
+		historyIdx:  -1,
+		autoScroll:   true,
+		showStar:     !isStarDismissed(root),
+		xdebugActive: xd,
+		xdebugMsg:    xdMsg,
+		root:         root,
+		siteClears:   make(map[string]int64),
+		memHistory:   make([]float64, 0, sparklineSize),
+		filterInput:  fi,
+		trainingSuggestion: &training.Suggestion{
+			Title:       "Loading...",
+			Description: "Training data loading",
+		},
 	}
 }
 
 func (m *Model) Init() tea.Cmd {
+	trainingPath := filepath.Join(cacheDir(), "training.json")
+	training.Load(trainingPath)
+
 	return tea.Batch(
 		tickCmd(),
 		listenForEvents(m.eventChan),
