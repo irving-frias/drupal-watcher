@@ -47,6 +47,10 @@ type Engine struct {
 	lazyTimer    *time.Timer
 	lazyFiles    map[string]struct{}
 
+	lastPubFile string
+	lastPubTime time.Time
+	dedupMu     sync.Mutex
+
 	startTime time.Time
 
 	stats struct {
@@ -128,8 +132,16 @@ func (e *Engine) Run(ctx context.Context) error {
 			e.mu.Unlock()
 			e.pending.Store(true)
 
-			// Publish file.change immediately so TUI shows it right away
-			if e.EventBus != nil {
+			// Publish file.change immediately (dedup within 500ms for same file)
+			e.dedupMu.Lock()
+			dup := dispFile == e.lastPubFile && time.Since(e.lastPubTime) < 500*time.Millisecond
+			if !dup {
+				e.lastPubFile = dispFile
+				e.lastPubTime = time.Now()
+			}
+			e.dedupMu.Unlock()
+
+			if !dup && e.EventBus != nil {
 				e.stats.changes.Add(1)
 				metrics.RecordChange()
 				e.EventBus.Publish(eventbus.TopicFileChange, core.EngineEvent{
