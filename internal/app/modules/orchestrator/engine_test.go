@@ -352,8 +352,8 @@ func TestStartTime(t *testing.T) {
 
 func TestValidateEngineConfig(t *testing.T) {
 	cfg := ValidateEngineConfig(EngineConfig{})
-	if cfg.Debounce != 150 {
-		t.Errorf("expected debounce 150, got %d", cfg.Debounce)
+	if cfg.Debounce != 800 {
+		t.Errorf("expected debounce 800, got %d", cfg.Debounce)
 	}
 	if cfg.LazyRebuildMs != 2000 {
 		t.Errorf("expected lazyRebuildMs 2000, got %d", cfg.LazyRebuildMs)
