@@ -63,6 +63,7 @@ type eventLine struct {
 	Content   string
 	Style     lipgloss.Style
 	Count     int
+	Time      time.Time
 }
 
 type statusLine struct {
@@ -189,12 +190,13 @@ func listenForEvents(eventChan <-chan core.EngineEvent) tea.Cmd {
 func (m *Model) pushEvent(line eventLine) {
 	if len(m.events) > 0 {
 		last := &m.events[len(m.events)-1]
-		if last.Content == line.Content {
+		if last.Content == line.Content && time.Since(last.Time) < time.Second {
 			last.Count++
 			return
 		}
 	}
 	line.Count = 1
+	line.Time = time.Now()
 	m.events = append(m.events, line)
 	if len(m.events) > m.eventCap {
 		m.events = m.events[1:]
