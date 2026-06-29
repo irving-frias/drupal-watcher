@@ -24,7 +24,7 @@ func (e *EngineInfo) StartTime() time.Time {
 	return e.start
 }
 
-func RunWithBus(ctx context.Context, bus *eventbus.EventBus) error {
+func RunWithBus(ctx context.Context, bus *eventbus.EventBus, root string) error {
 	info := &EngineInfo{start: time.Now()}
 	eventChan := make(chan core.EngineEvent, 100)
 
@@ -62,5 +62,5 @@ func RunWithBus(ctx context.Context, bus *eventbus.EventBus) error {
 		})
 	}
 
-	return ui.RunContext(ctx, eventChan, info)
+	return ui.RunContext(ctx, eventChan, info, root)
 }

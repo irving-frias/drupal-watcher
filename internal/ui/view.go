@@ -155,6 +155,17 @@ func (m *Model) renderInput() string {
 	return fmt.Sprintf("%s%s", prefix, m.input.View())
 }
 
+func (m *Model) renderStarBanner() string {
+	if !m.showStar {
+		return ""
+	}
+	return fmt.Sprintf("%s  Like this project? Star it on GitHub!  %s",
+		yellow.Render("★"),
+		dim.Render("type 'star' to open · 'dismiss' to hide"),
+	)
+}
+
+
 func (m *Model) renderHelp() string {
 	var b strings.Builder
 	b.WriteString(bold.Render("  drupal-watcher — Commands"))
@@ -193,5 +204,11 @@ func (m *Model) View() string {
 
 	input := cmdStyle.Render(m.renderInput())
 
-	return lipgloss.JoinVertical(lipgloss.Left, status, events, input)
+	parts := []string{status, events}
+	if m.showStar {
+		parts = append(parts, starStyle.Render(m.renderStarBanner()))
+	}
+	parts = append(parts, input)
+
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }

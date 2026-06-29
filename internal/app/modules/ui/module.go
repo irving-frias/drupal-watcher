@@ -10,7 +10,8 @@ import (
 )
 
 type Module struct {
-	bus *eventbus.EventBus
+	bus     *eventbus.EventBus
+	workDir string
 }
 
 var _ app.Module = (*Module)(nil)
@@ -22,11 +23,12 @@ func (m *Module) DependsOn() []app.Module { return nil }
 func (m *Module) Init(container *app.Container) error {
 	_ = container.MustGet(common.SvcOrchestrator)
 	m.bus = container.MustGet(common.SvcEventBus).(*eventbus.EventBus)
+	m.workDir = container.MustGet(common.SvcWorkDir).(string)
 	return nil
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	return tui.RunWithBus(ctx, m.bus)
+	return tui.RunWithBus(ctx, m.bus, m.workDir)
 }
 
 func (m *Module) Stop(ctx context.Context) error { return nil }

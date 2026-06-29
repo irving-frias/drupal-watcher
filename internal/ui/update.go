@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -198,6 +200,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func openURL(url string) tea.Cmd {
+	return func() tea.Msg {
+		var cmd *exec.Cmd
+		switch runtime.GOOS {
+		case "darwin":
+			cmd = exec.Command("open", url)
+		case "linux":
+			cmd = exec.Command("xdg-open", url)
+		case "windows":
+			cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
+		default:
+			cmd = exec.Command("open", url)
+		}
+		_ = cmd.Start()
+		return nil
+	}
+}
+
 func (m *Model) completeInput() {
 	input := strings.TrimSpace(m.input.Value())
 	parts := strings.Fields(input)
@@ -316,6 +336,23 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 				Style:     infoStyle,
 			})
 		}
+	case "star":
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "Opening " + cyan.Render("github.com/irving-frias/drupal-watcher") + " in your browser...",
+			Style:     infoStyle,
+		})
+		return openURL("https://github.com/irving-frias/drupal-watcher")
+
+	case "dismiss":
+		m.showStar = false
+		writeStarDismissed(m.root)
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "Star banner dismissed permanently. Type " + cyan.Render("star") + " to reopen.",
+			Style:     infoStyle,
+		})
+
 	case "stop", "quit", "exit":
 		return tea.Quit
 	default:

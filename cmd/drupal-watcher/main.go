@@ -15,6 +15,7 @@ import (
 	watchermodule "github.com/irving-frias/drupal-watcher/internal/app/modules/watcher"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
 	"github.com/irving-frias/drupal-watcher/internal/config"
+	"github.com/irving-frias/drupal-watcher/internal/health"
 )
 
 func main() {
@@ -36,6 +37,9 @@ func main() {
 		root = args[0]
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	cfgMod := &cfgmodule.Module{WorkDir: root}
 	watchMod := &watchermodule.Module{}
 	execMod := &execmodule.Module{}
@@ -45,7 +49,7 @@ func main() {
 	a := app.New(cfgMod, watchMod, execMod, orcMod, uiMod)
 
 	defer func() {
-		a.Stop(context.Background())
+		a.Stop(ctx)
 		config.RemovePid(root)
 	}()
 
@@ -54,7 +58,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := a.Start(context.Background()); err != nil && err != context.Canceled {
+	go health.Run(ctx)
+
+	if err := a.Start(ctx); err != nil && err != context.Canceled {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

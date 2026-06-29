@@ -33,7 +33,7 @@ cd /path/to/drupal/project
 vendor/bin/drupal-watcher start
 ```
 
-On first run, a `watcher.config.json` is auto-created with defaults. Edit it to customize routes, patterns, and cache clear commands.
+On first run, a `configs/config.yaml` is auto-created with defaults. Edit it to customize routes, patterns, and cache clear commands. You can also override any config value via environment variables (e.g. `DRUPAL_WATCHER_DEBOUNCE=500`).
 
 The TUI opens automatically. Events appear in real-time, and you can type commands at the prompt:
 
@@ -122,11 +122,13 @@ Accepts a JSON object mapping file extensions to drush commands.
 
 While the TUI is running, type commands at the prompt:
 
-| Command                | Description                            |
-|------------------------|----------------------------------------|
-| `status`               | Show stats, memory, and kernel watches |
-| `help`                 | Show available commands                |
-| `stop` / `quit` / `exit` | Stop the watcher                     |
+| Command                    | Description                            |
+|----------------------------|----------------------------------------|
+| `status`                   | Show stats, memory, and kernel watches |
+| `help`                     | Show available commands                |
+| `star`                     | Open GitHub repo in browser            |
+| `dismiss`                  | Hide the star banner permanently       |
+| `stop` / `quit` / `exit`   | Stop the watcher                       |
 
 Press `Ctrl+C` or `Ctrl+D` to quit at any time.
 
@@ -147,41 +149,50 @@ When running with `--no-tui`, type commands at the prompt:
 
 ## Configuration
 
-`watcher.config.json` sits in your Drupal project root:
+Config is read from `configs/config.yaml` (auto-created on first run). Falls back to `watcher.config.json` for legacy setups.
 
-```json
-{
-  "routes": ["docroot/modules/custom", "docroot/themes/custom"],
-  "patterns": [".php", ".module", ".inc", ".yml", ".html.twig", ".twig", ".css", ".js"],
-  "debounce": 800,
-  "commandsPerPattern": {
-    ".html.twig": "cc render",
-    ".twig": "cc render",
-    ".theme": "cc theme-registry",
-    ".module": "cc plugin",
-    ".inc": "cc plugin",
-    ".php": "cc plugin",
-    ".yml": "cc plugin",
-    ".info.yml": "cr",
-    ".services.yml": "cr",
-    ".routing.yml": "cr",
-    ".permissions.yml": "cr",
-    ".links.menu.yml": "cr",
-    ".css": "cc css-js",
-    ".js": "cc css-js"
-  },
-  "postClearCommands": [],
-  "skipLint": false,
-  "lintCommands": {
-    ".php": "php -l",
-    ".yml": "yaml",
-    ".yaml": "yaml"
-  },
-  "phpCsStandard": "",
-  "watchMode": "auto",
-  "pollInterval": 2000
-}
+```yaml
+routes:
+  - docroot/modules/custom
+  - docroot/themes/custom
+patterns:
+  - .php; .module; .inc; .yml; .html.twig; .twig; .css; .js
+debounce: 800
+commandsPerPattern:
+  .html.twig: cc render
+  .twig: cc render
+  .theme: cc theme-registry
+  .module: cc plugin
+  .inc: cc plugin
+  .php: cc plugin
+  .yml: cc plugin
+  .info.yml: cr
+  .services.yml: cr
+  .routing.yml: cr
+  .permissions.yml: cr
+  .links.menu.yml: cr
+  .css: cc css-js
+  .js: cc css-js
+skipLint: false
+lintCommands:
+  .php: php -l
+  .yml: yaml
+  .yaml: yaml
+phpCsStandard: ""
+watchMode: auto
+pollInterval: 2000
+eventBufferSize: 500
 ```
+
+Any value can be overridden via environment variables with the `DRUPAL_WATCHER_` prefix:
+
+| Env var | Config key | Example |
+|---|---|---|
+| `DRUPAL_WATCHER_DEBOUNCE` | `debounce` | `DRUPAL_WATCHER_DEBOUNCE=500` |
+| `DRUPAL_WATCHER_DRUSH_COMMAND` | `drushCommand` | `DRUPAL_WATCHER_DRUSH_COMMAND=cc all` |
+| `DRUPAL_WATCHER_SKIP_LINT` | `skipLint` | `DRUPAL_WATCHER_SKIP_LINT=true` |
+| `DRUPAL_WATCHER_WATCH_MODE` | `watchMode` | `DRUPAL_WATCHER_WATCH_MODE=poll` |
+| `DRUPAL_WATCHER_POLL_INTERVAL` | `pollInterval` | `DRUPAL_WATCHER_POLL_INTERVAL=1000` |
 
 | Field                 | Description                                                  |
 |-----------------------|--------------------------------------------------------------|
@@ -212,7 +223,7 @@ When running with `--no-tui`, type commands at the prompt:
 | `poll` | Periodic file tree scan at `pollInterval` (works around OS limits) |
 | `hybrid` | Runs both fsnotify and polling simultaneously; events are deduplicated within a 1s window. Provides the reliability of polling with the low latency of fsnotify. |
 
-Config via `watchMode` in `watcher.config.json` or override per session. Polling mode is useful in large projects that exceed `fs.inotify.max_user_watches` on Linux, or when running in shared filesystems like NFS.
+Config via `watchMode` in `configs/config.yaml` (or legacy `watcher.config.json`) or override per session with `DRUPAL_WATCHER_WATCH_MODE=poll`. Polling mode is useful in large projects that exceed `fs.inotify.max_user_watches` on Linux, or when running in shared filesystems like NFS.
 
 ## How it works
 
@@ -225,7 +236,8 @@ Config via `watchMode` in `watcher.config.json` or override per session. Polling
 5. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
 6. If any change requires a full rebuild (`cr`), it overrides all other commands
 7. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
-8. `Ctrl+C` stops the watcher, removes the PID file, and prints stats
+8. A health file is written to `~/.cache/drupal-watcher/health` every 30s (cleaned up on shutdown)
+9. `Ctrl+C` (or `SIGTERM`) cancels the context, stops all modules with a 10s timeout, removes PID and health files
 
 ### Drush optimizations
 
@@ -402,7 +414,8 @@ internal/
     examples/
       slack.go           → Demo: Slack webhook notifier
   ui/                    → Bubble Tea TUI (model, view, update, styles)
-  config/                → Config management, Drupal root detection, PID files
+  config/                → Config management (YAML + env vars), Drupal root detection, PID files
+  health/                → Liveness check (timestamp file every 30s)
   drush/                 → Drush resolution, execution, health checks
   utils/                 → Color helpers, format utilities
 
@@ -613,22 +626,26 @@ func main() {
 ### Startup order
 
 ```
-app.Start()
-├── Register EventBus in container
-├── Init modules (dependency-sorted):
-│   ├── config     → creates config.Manager, loads watcher.config.json
-│   ├── watcher    → creates FSNotifyWatcher from config
-│   ├── executor   → creates DrushExecutor from config
-│   ├── orchestrator→ creates Engine with EventBus, watcher, executor
-│   └── ui         → gets EventBus reference
-├── Start modules (sequential):
-│   ├── config     → no-op
-│   ├── watcher    → no-op
-│   ├── executor   → no-op
-│   ├── orchestrator→ starts engine.Run() in a goroutine
-│   └── ui         → runs TUI (blocks until user quits or SIGTERM)
-└── app.Stop() called (on quit or signal):
-    ├── Cancel context → engine goroutine stops
+main()
+├── Create cancellable context (ctx)
+├── go health.Run(ctx)                  → writes ~/.cache/drupal-watcher/health every 30s
+├── app.Start(ctx)
+│   ├── Register EventBus in container
+│   ├── Init modules (dependency-sorted):
+│   │   ├── config     → creates config.Manager, loads configs/config.yaml
+│   │   ├── watcher    → creates FSNotifyWatcher from config
+│   │   ├── executor   → creates DrushExecutor from config
+│   │   ├── orchestrator→ creates Engine with EventBus, watcher, executor
+│   │   └── ui         → gets EventBus + workDir (for star banner persistence)
+│   ├── Start modules (sequential):
+│   │   ├── config     → no-op
+│   │   ├── watcher    → no-op
+│   │   ├── executor   → no-op
+│   │   ├── orchestrator→ starts engine.Run() in a goroutine
+│   │   └── ui         → runs TUI (blocks until user quits or ctx cancelled)
+│   └── Wait for context cancellation or TUI exit
+└── defer app.Stop(ctx)                 → sync.Once, 10s timeout
+    ├── Cancel root context → health check stops + engine stops
     └── Stop modules in reverse order
 ```
 

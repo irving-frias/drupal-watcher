@@ -15,6 +15,11 @@ var (
 			BorderForeground(lipgloss.Color("33")).
 			Padding(0, 1)
 
+	starStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("220")).
+			Padding(0, 1)
+
 	cmdStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("64")).

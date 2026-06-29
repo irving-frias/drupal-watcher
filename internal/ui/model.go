@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"crypto/md5"
+	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -12,6 +15,37 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
+
+func dismissedPath(root string) string {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir = "/tmp"
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return ""
+	}
+	h := md5.Sum([]byte(abs))
+	return filepath.Join(dir, "drupal-watcher", fmt.Sprintf(".drupal-watcher-%x.dismissed", h[:8]))
+}
+
+func isStarDismissed(root string) bool {
+	p := dismissedPath(root)
+	if p == "" {
+		return false
+	}
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+func writeStarDismissed(root string) {
+	p := dismissedPath(root)
+	if p == "" {
+		return
+	}
+	os.MkdirAll(filepath.Dir(p), 0700)
+	os.WriteFile(p, nil, 0644)
+}
 
 const eventBufferSize = 100
 const maxHistory = 100
@@ -58,12 +92,14 @@ type Model struct {
 	siteClears map[string]int64
 
 	showHelp     bool
+	showStar     bool
+	root         string
 	memHistory   []float64
 	completions  []string
 	completionIdx int
 }
 
-func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo) *Model {
+func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "type help to see commands"
 	ti.Focus()
@@ -80,6 +116,8 @@ func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo) *Model {
 		width:      80,
 		historyIdx: -1,
 		autoScroll: true,
+		showStar:   !isStarDismissed(root),
+		root:       root,
 		siteClears: make(map[string]int64),
 		memHistory: make([]float64, 0, sparklineSize),
 	}
@@ -134,7 +172,7 @@ func (m *Model) addToHistory(cmd string) {
 	}
 }
 
-var commands = []string{"status", "stats", "filter", "help", "stop", "quit", "exit"}
+var commands = []string{"status", "stats", "filter", "star", "dismiss", "help", "stop", "quit", "exit"}
 
 func (m *Model) updateStatus() {
 	uptime := time.Since(m.engineInfo.StartTime())

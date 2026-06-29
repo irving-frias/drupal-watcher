@@ -14,29 +14,30 @@ import (
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 	"github.com/pterm/pterm"
+	"github.com/spf13/viper"
 )
 
 func nowMs() int64 { return time.Now().UnixMilli() }
 
 type Config struct {
-	Routes              []string          `json:"routes"`
-	Patterns            []string          `json:"patterns"`
-	ExcludePatterns     []string          `json:"excludePatterns"`
-	Debounce            int               `json:"debounce"`
-	DrushCmd            *string           `json:"drushCmd"`
-	DrushCommand        string            `json:"drushCommand"`
-	DrushArgs           []string          `json:"drushArgs"`
-	PostClearCommands   []string          `json:"postClearCommands"`
-	CommandsPerPattern  map[string]string `json:"commandsPerPattern"`
-	DrupalRoot          *string           `json:"drupalRoot"`
-	Notify              bool              `json:"-"`
-	Sites               []string          `json:"sites,omitempty"`
-	SkipLint            bool              `json:"skipLint,omitempty"`
-	LintCommands        map[string]string `json:"lintCommands,omitempty"`
-	PhpCsStandard       string            `json:"phpCsStandard,omitempty"`
-	WatchMode           string            `json:"watchMode,omitempty"`
-	PollInterval        int               `json:"pollInterval,omitempty"`
-	EventBufferSize     int               `json:"eventBufferSize,omitempty"`
+	Routes              []string          `json:"routes" mapstructure:"routes"`
+	Patterns            []string          `json:"patterns" mapstructure:"patterns"`
+	ExcludePatterns     []string          `json:"excludePatterns" mapstructure:"excludePatterns"`
+	Debounce            int               `json:"debounce" mapstructure:"debounce"`
+	DrushCmd            *string           `json:"drushCmd" mapstructure:"drushCmd"`
+	DrushCommand        string            `json:"drushCommand" mapstructure:"drushCommand"`
+	DrushArgs           []string          `json:"drushArgs" mapstructure:"drushArgs"`
+	PostClearCommands   []string          `json:"postClearCommands" mapstructure:"postClearCommands"`
+	CommandsPerPattern  map[string]string `json:"commandsPerPattern" mapstructure:"commandsPerPattern"`
+	DrupalRoot          *string           `json:"drupalRoot" mapstructure:"drupalRoot"`
+	Notify              bool              `json:"-" mapstructure:"notify"`
+	Sites               []string          `json:"sites,omitempty" mapstructure:"sites"`
+	SkipLint            bool              `json:"skipLint,omitempty" mapstructure:"skipLint"`
+	LintCommands        map[string]string `json:"lintCommands,omitempty" mapstructure:"lintCommands"`
+	PhpCsStandard       string            `json:"phpCsStandard,omitempty" mapstructure:"phpCsStandard"`
+	WatchMode           string            `json:"watchMode,omitempty" mapstructure:"watchMode"`
+	PollInterval        int               `json:"pollInterval,omitempty" mapstructure:"pollInterval"`
+	EventBufferSize     int               `json:"eventBufferSize,omitempty" mapstructure:"eventBufferSize"`
 	resolvedSites       []core.SiteInfo
 }
 
@@ -95,6 +96,10 @@ func (m *Manager) configPath(root string) string {
 		return m.customConfigPath
 	}
 	return filepath.Join(getRoot(root), "watcher.config.json")
+}
+
+func (m *Manager) yamlConfigPath(root string) string {
+	return filepath.Join(getRoot(root), "configs", "config.yaml")
 }
 
 func cacheDir() string {
@@ -214,21 +219,72 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 	}
 }
 
+func bindEnv(v *viper.Viper) {
+	envKeys := map[string]string{
+		"debounce":        "DRUPAL_WATCHER_DEBOUNCE",
+		"drushCmd":        "DRUPAL_WATCHER_DRUSH_CMD",
+		"drushCommand":    "DRUPAL_WATCHER_DRUSH_COMMAND",
+		"drupalRoot":      "DRUPAL_WATCHER_DRUPAL_ROOT",
+		"notify":          "DRUPAL_WATCHER_NOTIFY",
+		"skipLint":        "DRUPAL_WATCHER_SKIP_LINT",
+		"phpCsStandard":   "DRUPAL_WATCHER_PHP_CS_STANDARD",
+		"watchMode":       "DRUPAL_WATCHER_WATCH_MODE",
+		"pollInterval":    "DRUPAL_WATCHER_POLL_INTERVAL",
+		"eventBufferSize": "DRUPAL_WATCHER_EVENT_BUFFER_SIZE",
+	}
+	for key, env := range envKeys {
+		v.BindEnv(key, env)
+	}
+}
+
+func (m *Manager) loadViper(root string) (Config, bool) {
+	r := getRoot(root)
+	v := viper.New()
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
+	v.AddConfigPath(filepath.Join(r, "configs"))
+	v.SetEnvPrefix("DRUPAL_WATCHER")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
+	v.AutomaticEnv()
+	bindEnv(v)
+
+	if err := v.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			return Config{}, false
+		}
+		return Config{}, false
+	}
+
+	var cfg Config
+	if err := v.Unmarshal(&cfg); err != nil {
+		return Config{}, false
+	}
+
+	return cfg, true
+}
+
 func (m *Manager) LoadConfig(root string) (Config, error) {
 	r := getRoot(root)
 	if e, ok := m.cache[r]; ok && e.Config != nil {
 		return *e.Config, nil
 	}
 
+	// Try YAML + Viper first
+	if cfg, ok := m.loadViper(r); ok {
+		cfg = m.ValidateConfig(cfg, r)
+		m.cache[r] = &cacheEntry{Config: &cfg}
+		return cfg, nil
+	}
+
+	// Fallback to JSON
 	cp := m.configPath(r)
 	data, err := os.ReadFile(cp)
 	if err != nil {
 		def := m.GetDefaultConfig(r)
-		b, _ := json.MarshalIndent(def, "", "  ")
-		if werr := os.WriteFile(cp, b, 0644); werr != nil {
-			return def, fmt.Errorf("failed to create config: %w", werr)
+		if err := m.saveYamlConfig(def, r); err != nil {
+			return def, fmt.Errorf("failed to create config: %w", err)
 		}
-		pterm.Info.Printfln("Created %s with defaults.", utils.Cyan("watcher.config.json"))
+		pterm.Info.Printfln("Created %s with defaults.", utils.Cyan("configs/config.yaml"))
 		m.cache[r] = &cacheEntry{Config: &def}
 		return def, nil
 	}
@@ -378,6 +434,38 @@ func (m *Manager) SaveConfig(cfg Config, root string) error {
 		return err
 	}
 	m.cache[r] = &cacheEntry{}
+	return nil
+}
+
+func (m *Manager) saveYamlConfig(cfg Config, root string) error {
+	r := getRoot(root)
+	yp := m.yamlConfigPath(r)
+	dir := filepath.Dir(yp)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	v := viper.New()
+	v.Set("routes", cfg.Routes)
+	v.Set("patterns", cfg.Patterns)
+	v.Set("excludePatterns", cfg.ExcludePatterns)
+	v.Set("debounce", cfg.Debounce)
+	v.Set("drushCmd", cfg.DrushCmd)
+	v.Set("drushCommand", cfg.DrushCommand)
+	v.Set("drushArgs", cfg.DrushArgs)
+	v.Set("postClearCommands", cfg.PostClearCommands)
+	v.Set("commandsPerPattern", cfg.CommandsPerPattern)
+	v.Set("drupalRoot", cfg.DrupalRoot)
+	v.Set("notify", cfg.Notify)
+	v.Set("sites", cfg.Sites)
+	v.Set("skipLint", cfg.SkipLint)
+	v.Set("lintCommands", cfg.LintCommands)
+	v.Set("phpCsStandard", cfg.PhpCsStandard)
+	v.Set("watchMode", cfg.WatchMode)
+	v.Set("pollInterval", cfg.PollInterval)
+	v.Set("eventBufferSize", cfg.EventBufferSize)
+	if err := v.WriteConfigAs(yp); err != nil {
+		return err
+	}
 	return nil
 }
 

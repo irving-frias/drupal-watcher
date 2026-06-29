@@ -1,0 +1,52 @@
+routes:
+  - docroot/modules/custom
+  - docroot/themes/custom
+patterns:
+  - .php
+  - .module
+  - .inc
+  - .theme
+  - .info.yml
+  - .services.yml
+  - .routing.yml
+  - .yml
+  - .yaml
+  - .twig
+  - .html.twig
+  - .css
+  - .js
+excludePatterns: []
+debounce: 800
+drushCmd: null
+drushCommand: cr
+drushArgs:
+  - --quiet
+  - --no-ansi
+postClearCommands: []
+commandsPerPattern:
+  .html.twig: cc render
+  .twig: cc render
+  .theme: cc theme-registry
+  .module: cc plugin
+  .inc: cc plugin
+  .php: cc plugin
+  .yml: cc plugin
+  .info.yml: cr
+  .services.yml: cr
+  .routing.yml: cr
+  .permissions.yml: cr
+  .links.menu.yml: cr
+  .css: cc css-js
+  .js: cc css-js
+drupalRoot: docroot
+notify: false
+sites: []
+skipLint: false
+lintCommands:
+  .php: php -l
+  .yml: yaml automatic
+  .yaml: yaml automatic
+phpCsStandard: ""
+watchMode: auto
+pollInterval: 2000
+eventBufferSize: 500
