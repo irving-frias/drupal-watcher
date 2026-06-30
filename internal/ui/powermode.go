@@ -20,14 +20,24 @@ const (
 )
 
 const (
-	comboTimeout  = 3 * time.Second
-	comboWindow   = 2 * time.Second
-	energyDecay   = 0.96
-	maxParticles  = 25
-	pulseDuration = 6
+	comboTimeout   = 3 * time.Second
+	comboWindow    = 2 * time.Second
+	energyDecay    = 0.96
+	maxParticles   = 45
+	pulseDuration  = 6
 )
 
-var particleChars = []string{"✦", "✧", "⚡", "★", "♦", "‧", "*", "·"}
+var sparkChars = []string{"✦", "✧", "⚡", "★", "♦"}
+var fireChars  = []string{"🔥", "💥", "⚡"}
+var smokeChars = []string{"·", "‧", "∘", "°"}
+
+type ParticleType int
+
+const (
+	ParticleSpark ParticleType = iota
+	ParticleFire
+	ParticleSmoke
+)
 
 type Particle struct {
 	Char    string
@@ -35,25 +45,25 @@ type Particle struct {
 	VX, VY  float64
 	Life    int
 	MaxLife int
+	Typ     ParticleType
 }
 
 type PowerMode struct {
-	active      bool
-	combo       int
-	maxCombo    int
-	energy      float64
-	level       PowerLevel
-	lastHit     time.Time
-	particles   []Particle
-	pulseFrames int
-	sound       *SoundPlayer
+	active        bool
+	combo         int
+	maxCombo      int
+	energy        float64
+	level         PowerLevel
+	lastHit       time.Time
+	particles     []Particle
+	pulseFrames   int
+	overheatGlow  int
 }
 
 func NewPowerMode() *PowerMode {
 	return &PowerMode{
 		active:    true,
 		particles: make([]Particle, 0, maxParticles),
-		sound:     NewSoundPlayer(),
 	}
 }
 
@@ -64,29 +74,13 @@ func (pm *PowerMode) Toggle() {
 	}
 }
 
-func (pm *PowerMode) IsActive() bool {
-	return pm.active
-}
-
-func (pm *PowerMode) Level() PowerLevel {
-	return pm.level
-}
-
-func (pm *PowerMode) Combo() int {
-	return pm.combo
-}
-
-func (pm *PowerMode) MaxCombo() int {
-	return pm.maxCombo
-}
-
-func (pm *PowerMode) Energy() float64 {
-	return pm.energy
-}
-
-func (pm *PowerMode) PulseFrames() int {
-	return pm.pulseFrames
-}
+func (pm *PowerMode) IsActive() bool    { return pm.active }
+func (pm *PowerMode) Level() PowerLevel { return pm.level }
+func (pm *PowerMode) Combo() int        { return pm.combo }
+func (pm *PowerMode) MaxCombo() int     { return pm.maxCombo }
+func (pm *PowerMode) Energy() float64   { return pm.energy }
+func (pm *PowerMode) PulseFrames() int  { return pm.pulseFrames }
+func (pm *PowerMode) OverheatGlow() int { return pm.overheatGlow }
 
 func (pm *PowerMode) reset() {
 	pm.combo = 0
@@ -94,6 +88,7 @@ func (pm *PowerMode) reset() {
 	pm.level = LevelNormal
 	pm.particles = pm.particles[:0]
 	pm.pulseFrames = 0
+	pm.overheatGlow = 0
 }
 
 func (pm *PowerMode) Punch() {
@@ -126,16 +121,41 @@ func (pm *PowerMode) Punch() {
 	prevLevel := pm.level
 	pm.updateLevel()
 
-	pm.sound.PlayLevel(pm.level, prevLevel)
-	if pm.combo > 1 && pm.level == prevLevel {
-		pm.sound.PlayComboUp(pm.combo)
-	}
-
 	if pm.level > prevLevel && pm.level >= LevelHot {
 		pm.pulseFrames = pulseDuration
+		pm.overheatGlow = 8
+		pm.explosion()
 	}
 
-	pm.spawnParticles()
+	if pm.level == prevLevel && pm.combo > 1 {
+		pm.spawnParticles()
+	}
+}
+
+func (pm *PowerMode) explosion() {
+	n := 15
+	if pm.level == LevelPower {
+		n = 25
+	}
+	for i := 0; i < n && len(pm.particles) < maxParticles; i++ {
+		angle := rand.Float64() * 2 * math.Pi
+		speed := 0.03 + rand.Float64()*0.07
+		life := 15 + rand.Intn(15)
+		char := sparkChars[rand.Intn(len(sparkChars))]
+		if rand.Intn(3) == 0 {
+			char = fireChars[rand.Intn(len(fireChars))]
+		}
+		pm.particles = append(pm.particles, Particle{
+			Char:    char,
+			X:       0.5,
+			Y:       0.5,
+			VX:      math.Cos(angle) * speed,
+			VY:      math.Sin(angle) * speed,
+			Life:    life,
+			MaxLife: life,
+			Typ:     ParticleSpark,
+		})
+	}
 }
 
 func (pm *PowerMode) Tick() {
@@ -160,6 +180,9 @@ func (pm *PowerMode) Tick() {
 	if pm.pulseFrames > 0 {
 		pm.pulseFrames--
 	}
+	if pm.overheatGlow > 0 {
+		pm.overheatGlow--
+	}
 }
 
 func (pm *PowerMode) updateLevel() {
@@ -177,26 +200,48 @@ func (pm *PowerMode) updateLevel() {
 
 func (pm *PowerMode) spawnParticles() {
 	n := 0
+	smokeN := 0
 	switch pm.level {
 	case LevelWarm:
 		n = 2
+		smokeN = 1
 	case LevelHot:
-		n = 6
+		n = 5
+		smokeN = 2
 	case LevelPower:
-		n = 12
+		n = 10
+		smokeN = 4
 	default:
 		return
 	}
 
 	for i := 0; i < n && len(pm.particles) < maxParticles; i++ {
+		char := sparkChars[rand.Intn(len(sparkChars))]
+		if rand.Intn(4) == 0 {
+			char = fireChars[rand.Intn(len(fireChars))]
+		}
 		pm.particles = append(pm.particles, Particle{
-			Char:    particleChars[rand.Intn(len(particleChars))],
-			X:       0.5,
-			Y:       0.5,
-			VX:      (rand.Float64() - 0.5) * 0.08,
-			VY:      -(rand.Float64() * 0.06),
-			Life:    10 + rand.Intn(15),
-			MaxLife: 25,
+			Char:    char,
+			X:       0.3 + rand.Float64()*0.4,
+			Y:       0.5 + rand.Float64()*0.3,
+			VX:      (rand.Float64() - 0.5) * 0.12,
+			VY:      -(0.04 + rand.Float64()*0.07),
+			Life:    8 + rand.Intn(12),
+			MaxLife: 20,
+			Typ:     ParticleSpark,
+		})
+	}
+
+	for i := 0; i < smokeN && len(pm.particles) < maxParticles; i++ {
+		pm.particles = append(pm.particles, Particle{
+			Char:    smokeChars[rand.Intn(len(smokeChars))],
+			X:       0.3 + rand.Float64()*0.4,
+			Y:       0.4 + rand.Float64()*0.2,
+			VX:      (rand.Float64() - 0.5) * 0.02,
+			VY:      -(0.01 + rand.Float64()*0.02),
+			Life:    20 + rand.Intn(15),
+			MaxLife: 35,
+			Typ:     ParticleSmoke,
 		})
 	}
 }
@@ -208,9 +253,18 @@ func (pm *PowerMode) tickParticles() {
 		if p.Life <= 0 {
 			continue
 		}
+
+		switch p.Typ {
+		case ParticleSpark:
+			p.VY += 0.003
+			p.VX *= 0.98
+		case ParticleSmoke:
+			p.VX += (rand.Float64() - 0.5) * 0.004
+			p.VY -= 0.001
+		}
+
 		p.X += p.VX
 		p.Y += p.VY
-		p.VY += 0.002
 		alive = append(alive, p)
 	}
 	pm.particles = alive
@@ -244,13 +298,16 @@ func (pm *PowerMode) RenderCombo() string {
 		color = comboPower
 	}
 
-	bolt := "⚡"
+	prefix := "⚡"
+	if pm.level == LevelHot {
+		prefix = "🔥"
+	}
 	if pm.level == LevelPower {
-		bolt = "🔥"
+		prefix = "💥"
 	}
 
 	style := lipgloss.NewStyle().Foreground(color).Bold(true)
-	return style.Render(fmt.Sprintf("%s x%d", bolt, pm.combo))
+	return style.Render(fmt.Sprintf("%s x%d", prefix, pm.combo))
 }
 
 func (pm *PowerMode) RenderEnergyBar(width int) string {
@@ -266,13 +323,20 @@ func (pm *PowerMode) RenderEnergyBar(width int) string {
 	bar := strings.Builder{}
 	for i := 0; i < width; i++ {
 		if i < filled {
-			if pm.level >= LevelHot {
+			switch {
+			case pm.level >= LevelPower && pm.overheatGlow%2 == 0:
 				bar.WriteString("█")
-			} else {
+			case pm.level >= LevelHot:
+				bar.WriteString("▓")
+			default:
 				bar.WriteString("▓")
 			}
 		} else {
-			bar.WriteString("░")
+			if pm.level >= LevelPower && pm.energy > 0.5 {
+				bar.WriteString("▒")
+			} else {
+				bar.WriteString("░")
+			}
 		}
 	}
 
@@ -283,7 +347,11 @@ func (pm *PowerMode) RenderEnergyBar(width int) string {
 	case LevelHot:
 		color = comboHot
 	case LevelPower:
-		color = comboPower
+		if pm.overheatGlow > 0 && pm.overheatGlow%2 == 0 {
+			color = lipgloss.Color("226")
+		} else {
+			color = comboPower
+		}
 	}
 
 	return lipgloss.NewStyle().Foreground(color).Render(bar.String())
@@ -310,9 +378,24 @@ func (pm *PowerMode) RenderParticles(width, height int) string {
 		alpha := float64(lifetime) / float64(p.MaxLife)
 		x := int(p.X * float64(width-1))
 		y := int(p.Y * float64(height-1))
-		if x >= 0 && x < width && y >= 0 && y < height {
-			if alpha > 0.5 {
-				grid[y][x] = p.Char
+		if x < 0 {
+			x = 0
+		}
+		if x >= width {
+			x = width - 1
+		}
+		if y < 0 {
+			y = 0
+		}
+		if y >= height {
+			y = height - 1
+		}
+
+		if alpha > 0.6 {
+			grid[y][x] = p.Char
+		} else if alpha > 0.3 {
+			if p.Typ == ParticleSmoke {
+				grid[y][x] = "·"
 			} else {
 				grid[y][x] = "·"
 			}

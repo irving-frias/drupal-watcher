@@ -55,8 +55,4 @@ var (
 	comboWarm   = lipgloss.Color("214")
 	comboHot    = lipgloss.Color("208")
 	comboPower  = lipgloss.Color("196")
-
-	energyBarStyle = lipgloss.NewStyle().Padding(0, 1)
-	comboStyle     = lipgloss.NewStyle().Padding(0, 1)
-	pulseBorder    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("196")).Padding(0, 1)
 )

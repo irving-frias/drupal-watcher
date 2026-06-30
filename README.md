@@ -165,71 +165,30 @@ While the TUI is running, type commands at the prompt:
 
 The status line shows memory usage with a live sparkline, change/clear counters, and per-site clear breakdowns when multiple sites are active.
 
-## PowerMode
+## PowerMode — Overheat System 🔥
 
-PowerMode adds energetic visual feedback when the watcher detects rapid file changes. Inspired by the VS Code Power Mode extension, it turns bursts of activity into a more engaging terminal experience.
+PowerMode adds energetic visual feedback when the watcher detects rapid file changes. Inspired by the VS Code Power Mode extension, it turns bursts of activity into a dynamic overheating effect — as if the watcher is working so hard it's about to catch fire.
 
-When multiple file changes or cache clears arrive within a short window (2s), a combo counter builds up and visual effects intensify:
+When multiple file changes or cache clears arrive within a short window (2s), a combo counter builds up and the UI progressively **overheats**:
 
-| Combo | Level | Effects |
+| Combo | Level | Visual Effects |
 |---|---|---|
 | 0-2 | Normal | No effects |
-| 3-5 | Warm | Status bar border turns orange, combo counter and energy bar appear |
-| 6-10 | Hot | Border shifts to deep orange, particles animate, screen pulses subtly |
-| 11+ | Power | Red animated border, intense particles (✦ ✧ ⚡ ★ ♦), full energy bar, screen pulses |
+| 3-5 | Warm | Status bar border turns orange, combo counter (`⚡`) and energy bar appear |
+| 6-10 | Hot | Border shifts to deep orange, **sparks** (✦ ✧ ⚡) fly upward, screen pulses, combo icon becomes 🔥 |
+| 11+ | 🔥 Power | Red animated border, **fire explosions** (🔥 💥) burst on each level-up, embers float up, intense screen pulse, combo icon becomes 💥 |
 
-The **combo counter** (`⚡ x5`) and **energy bar** (`▓▓▓▓░░░░`) appear on the status line when activity ramps up. Energy decays during idle periods.
+The **combo counter** (⚡ x5 / 🔥 x8 / 💥 x12) and **energy bar** (`▓▓▓▓░░░░`) appear on the status line when activity ramps up. Energy decays during idle periods, cooling the system down.
 
-PowerMode also plays **synthesized tones** through your speakers when levels increase:
-- **Warm**: single C5 tone (523 Hz)
-- **Hot**: ascending C5→E5 two-tone arpeggio
-- **Power**: ascending C5→E5→G5→C6 four-tone arpeggio
-- Each combo increment plays a quick pitch blip that rises with combo count
-- Sound is optional and silently degrades if audio initialization fails
+### Particle system
 
-Sound works on all platforms without extra dependencies. It generates tones in pure Go and plays them via the system audio player:
-- **macOS**: `afplay` (built-in)
-- **Linux**: `paplay` (PulseAudio) or `aplay` (ALSA)
-- **WSL**: forwards to Windows via `powershell.exe`
-- **Windows**: `PowerShell` console beep
+| Particle type | Behavior | Characters |
+|---|---|---|
+| Sparks | Fast, short-lived, fly upward at random angles | ✦ ✧ ⚡ ★ ♦ |
+| Fire | Medium-lived, wobbling upward trajectory | 🔥 💥 ⚡ |
+| Smoke | Slow, rising, expands horizontally, long fade | · ‧ ∘ ° |
 
-No CGO, no shared library dependencies. If no audio player is found, sound is silently disabled.
-
-### Sound in Docker
-
-When running inside a Docker container (e.g. DDEV, Lando), sound requires forwarding the host audio system to the container. The watcher automatically detects `PULSE_SERVER` environment variable.
-
-**1. Add a docker-compose override** (`.ddev/docker-compose.audio.yaml` for DDEV):
-
-```yaml
-version: "3.6"
-services:
-  web:
-    environment:
-      - PULSE_SERVER=unix:/tmp/pulse/pulseaudio.socket
-    volumes:
-      - /tmp/pulse/pulseaudio.socket:/tmp/pulse/pulseaudio.socket
-```
-
-**2. Start PulseAudio on the host** (one-time):
-
-```bash
-# macOS (install PulseAudio via brew)
-brew install pulseaudio
-pulseaudio --load=module-native-protocol-unix --exit-idle-time=-1 --daemon
-
-# Linux (usually already running)
-pactl info
-```
-
-**3. Verify inside the container:**
-
-```bash
-docker exec -it <container> bash
-paplay --raw /dev/urandom  # should produce static
-```
-
-If you don't want to set up PulseAudio, sound silently degrades — PowerMode visual effects still work.
+On each level transition (Warm→Hot, Hot→Power) a **radial explosion** bursts particles outward in all directions — 15 sparks at Hot, 25 at Power. The energy bar pulses yellow-white while the glow effect is active.
 
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
