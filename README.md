@@ -187,7 +187,13 @@ PowerMode also plays **synthesized tones** through your speakers when levels inc
 - Each combo increment plays a quick pitch blip that rises with combo count
 - Sound is optional and silently degrades if audio initialization fails
 
-Sound requires CGO and is only available in locally-compiled binaries (e.g. `go install`). Pre-built binaries from GitHub Releases use `CGO_ENABLED=0` for portability, so audio is disabled in those builds.
+Sound works on all platforms without extra dependencies. It generates tones in pure Go and plays them via the system audio player:
+- **macOS**: `afplay` (built-in)
+- **Linux**: `paplay` (PulseAudio) or `aplay` (ALSA)
+- **WSL**: forwards to Windows via `powershell.exe`
+- **Windows**: `PowerShell` console beep
+
+No CGO, no shared library dependencies. If no audio player is found, sound is silently disabled.
 
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
