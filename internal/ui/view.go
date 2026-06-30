@@ -60,6 +60,9 @@ func (m *Model) renderStatus() string {
 	if m.siteFilter != "" {
 		right += cyan.Render(" [filter: " + m.siteFilter + "]")
 	}
+	if m.powerMode.Cooling() && m.powerMode.Combo() > 0 {
+		right += lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(" ❄ cooling")
+	}
 
 	statusLine := left + right
 
@@ -207,7 +210,7 @@ func (m *Model) renderHelp() string {
 
 func (m *Model) View() string {
 	borderColor := m.powerMode.BorderColor()
-	if m.powerMode.Level() > 0 {
+	if m.powerMode.Level() > 0 || m.powerMode.Cooling() {
 		statusStyle = statusStyle.BorderForeground(borderColor)
 		if m.powerMode.PulseFrames()%2 == 0 {
 			eventsStyle = eventsStyle.BorderForeground(borderColor)

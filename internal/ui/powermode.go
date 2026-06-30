@@ -20,16 +20,17 @@ const (
 )
 
 const (
-	comboTimeout   = 3 * time.Second
-	comboWindow    = 2 * time.Second
-	energyDecay    = 0.96
-	maxParticles   = 45
-	pulseDuration  = 6
+	comboTimeout    = 3 * time.Second
+	comboWindow     = 2 * time.Second
+	energyDecay     = 0.96
+	maxParticles    = 50
+	pulseDuration   = 6
+	maxCoolingFrames = 30
 )
 
 var sparkChars = []string{"✦", "✧", "⚡", "★", "♦"}
 var fireChars  = []string{"🔥", "💥", "⚡"}
-var smokeChars = []string{"·", "‧", "∘", "°"}
+var smokeChars = []string{"·", "‧", "∘", "°", "≈"}
 
 type ParticleType int
 
@@ -58,6 +59,8 @@ type PowerMode struct {
 	particles     []Particle
 	pulseFrames   int
 	overheatGlow  int
+	cooling       bool
+	coolingFrames int
 }
 
 func NewPowerMode() *PowerMode {
@@ -81,6 +84,7 @@ func (pm *PowerMode) MaxCombo() int     { return pm.maxCombo }
 func (pm *PowerMode) Energy() float64   { return pm.energy }
 func (pm *PowerMode) PulseFrames() int  { return pm.pulseFrames }
 func (pm *PowerMode) OverheatGlow() int { return pm.overheatGlow }
+func (pm *PowerMode) Cooling() bool     { return pm.cooling }
 
 func (pm *PowerMode) reset() {
 	pm.combo = 0
@@ -89,6 +93,8 @@ func (pm *PowerMode) reset() {
 	pm.particles = pm.particles[:0]
 	pm.pulseFrames = 0
 	pm.overheatGlow = 0
+	pm.cooling = false
+	pm.coolingFrames = 0
 }
 
 func (pm *PowerMode) Punch() {
@@ -121,6 +127,11 @@ func (pm *PowerMode) Punch() {
 	prevLevel := pm.level
 	pm.updateLevel()
 
+	if pm.cooling {
+		pm.cooling = false
+		pm.coolingFrames = 0
+	}
+
 	if pm.level > prevLevel && pm.level >= LevelHot {
 		pm.pulseFrames = pulseDuration
 		pm.overheatGlow = 8
@@ -129,6 +140,71 @@ func (pm *PowerMode) Punch() {
 
 	if pm.level == prevLevel && pm.combo > 1 {
 		pm.spawnParticles()
+	}
+}
+
+func (pm *PowerMode) Tick() {
+	if !pm.active {
+		return
+	}
+
+	if pm.combo > 0 && time.Since(pm.lastHit) > comboTimeout {
+		pm.combo--
+		if pm.combo < 0 {
+			pm.combo = 0
+		}
+		pm.energy *= energyDecay
+		if pm.energy < 0.01 {
+			pm.energy = 0
+		}
+		pm.updateLevel()
+
+		if pm.combo > 0 {
+			pm.cooling = true
+			if pm.coolingFrames < maxCoolingFrames {
+				pm.coolingFrames++
+			}
+		}
+	}
+
+	if pm.cooling && pm.coolingFrames > 0 {
+		pm.coolingFrames--
+		pm.spawnCoolSmoke()
+	} else if pm.cooling && pm.coolingFrames == 0 {
+		pm.cooling = false
+	}
+
+	pm.tickParticles()
+
+	if pm.pulseFrames > 0 {
+		pm.pulseFrames--
+	}
+	if pm.overheatGlow > 0 {
+		pm.overheatGlow--
+	}
+}
+
+func (pm *PowerMode) spawnCoolSmoke() {
+	n := 1
+	if pm.level >= LevelHot {
+		n = 2
+	}
+	if pm.level >= LevelPower {
+		n = 3
+	}
+
+	for i := 0; i < n && len(pm.particles) < maxParticles; i++ {
+		wide := 0.6 + float64(pm.coolingFrames)/float64(maxCoolingFrames)*0.3
+		pm.particles = append(pm.particles, Particle{
+			Char:    smokeChars[rand.Intn(len(smokeChars))],
+			X:       0.2 + rand.Float64()*wide,
+			Y:       0.7 + rand.Float64()*0.3,
+			VX:      (rand.Float64() - 0.5) * 0.015,
+			VY:      -(0.005 + rand.Float64()*0.012),
+			Life:    25 + rand.Intn(15),
+			MaxLife: 40,
+			Typ:     ParticleSmoke,
+		})
 	}
 }
 
@@ -155,33 +231,6 @@ func (pm *PowerMode) explosion() {
 			MaxLife: life,
 			Typ:     ParticleSpark,
 		})
-	}
-}
-
-func (pm *PowerMode) Tick() {
-	if !pm.active {
-		return
-	}
-
-	if pm.combo > 0 && time.Since(pm.lastHit) > comboTimeout {
-		pm.combo--
-		if pm.combo < 0 {
-			pm.combo = 0
-		}
-		pm.energy *= energyDecay
-		if pm.energy < 0.01 {
-			pm.energy = 0
-		}
-		pm.updateLevel()
-	}
-
-	pm.tickParticles()
-
-	if pm.pulseFrames > 0 {
-		pm.pulseFrames--
-	}
-	if pm.overheatGlow > 0 {
-		pm.overheatGlow--
 	}
 }
 
@@ -259,7 +308,7 @@ func (pm *PowerMode) tickParticles() {
 			p.VY += 0.003
 			p.VX *= 0.98
 		case ParticleSmoke:
-			p.VX += (rand.Float64() - 0.5) * 0.004
+			p.VX += (rand.Float64() - 0.5) * 0.006
 			p.VY -= 0.001
 		}
 
@@ -271,6 +320,9 @@ func (pm *PowerMode) tickParticles() {
 }
 
 func (pm *PowerMode) BorderColor() lipgloss.Color {
+	if pm.cooling {
+		return lipgloss.Color("63")
+	}
 	switch pm.level {
 	case LevelPower:
 		return lipgloss.Color("196")
@@ -305,6 +357,10 @@ func (pm *PowerMode) RenderCombo() string {
 	if pm.level == LevelPower {
 		prefix = "💥"
 	}
+	if pm.cooling {
+		prefix = "❄"
+		color = lipgloss.Color("63")
+	}
 
 	style := lipgloss.NewStyle().Foreground(color).Bold(true)
 	return style.Render(fmt.Sprintf("%s x%d", prefix, pm.combo))
@@ -321,14 +377,27 @@ func (pm *PowerMode) RenderEnergyBar(width int) string {
 	}
 
 	bar := strings.Builder{}
+	if pm.cooling {
+		for i := 0; i < width; i++ {
+			if i < filled {
+				if pm.coolingFrames%2 == 0 {
+					bar.WriteString("▓")
+				} else {
+					bar.WriteString("▒")
+				}
+			} else {
+				bar.WriteString("░")
+			}
+		}
+		color := lipgloss.Color("63")
+		return lipgloss.NewStyle().Foreground(color).Render(bar.String())
+	}
+
 	for i := 0; i < width; i++ {
 		if i < filled {
-			switch {
-			case pm.level >= LevelPower && pm.overheatGlow%2 == 0:
+			if pm.level >= LevelPower && pm.overheatGlow%2 == 0 {
 				bar.WriteString("█")
-			case pm.level >= LevelHot:
-				bar.WriteString("▓")
-			default:
+			} else {
 				bar.WriteString("▓")
 			}
 		} else {

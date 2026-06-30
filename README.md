@@ -186,9 +186,20 @@ The **combo counter** (⚡ x5 / 🔥 x8 / 💥 x12) and **energy bar** (`▓▓�
 |---|---|---|
 | Sparks | Fast, short-lived, fly upward at random angles | ✦ ✧ ⚡ ★ ♦ |
 | Fire | Medium-lived, wobbling upward trajectory | 🔥 💥 ⚡ |
-| Smoke | Slow, rising, expands horizontally, long fade | · ‧ ∘ ° |
+| Smoke | Slow, rising, expands horizontally, long fade | · ‧ ∘ ° ≈ |
 
 On each level transition (Warm→Hot, Hot→Power) a **radial explosion** bursts particles outward in all directions — 15 sparks at Hot, 25 at Power. The energy bar pulses yellow-white while the glow effect is active.
+
+### Cooldown ❄
+
+When events stop arriving and energy decays, the system enters **cooldown mode**:
+- Status bar border turns **blue**
+- Combo icon changes to ❄ (snowflake)
+- Energy bar pulses with a blue draining animation
+- **Smoke particles rise from the bottom** as the system cools — more smoke at higher levels
+- Status line shows a "❄ cooling" indicator
+- Cooldown tapers off gradually over ~30 ticks
+- A new event immediately cancels cooldown and resumes heating
 
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
