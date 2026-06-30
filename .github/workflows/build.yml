@@ -16,6 +16,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
+      - name: Install ALSA (Linux audio)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libasound2-dev
       - name: Test
         run: go test -count=1 ./...
       - name: Vet
@@ -44,10 +46,15 @@ jobs:
           echo "tag=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
+      - name: Install ALSA (Linux audio)
+        if: matrix.goos == 'linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libasound2-dev
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.goos == 'linux' && '1' || '0' }}
         run: |
           if [ "${{ matrix.goos }}" = "windows" ]; then
             go build -o "drupal-watcher-${{ matrix.goos }}-${{ matrix.goarch }}.exe" ./cmd/drupal-watcher
