@@ -116,6 +116,10 @@ func playWAV(data []byte) {
 			cmd := exec.Command("aplay", "-r", "44100", "-c", "1", "-f", "S16_LE")
 			cmd.Stdin = bytes.NewReader(data[44:])
 			cmd.Start()
+		} else if hasExec("powershell.exe") {
+			cmd := exec.Command("powershell.exe", "-c",
+				"[console]::beep(440,200)")
+			cmd.Start()
 		}
 	case "windows":
 		if hasExec("powershell.exe") {
