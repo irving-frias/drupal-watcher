@@ -80,6 +80,12 @@ func (m *Model) renderStatus() string {
 		memColor.Render(fmt.Sprintf("%.1f MB", s.AllocMB)),
 		sparkStr, s.Changes, s.Clears)
 
+	comboStr := m.powerMode.RenderCombo()
+	if comboStr != "" {
+		energyBar := m.powerMode.RenderEnergyBar(8)
+		memLine += "  |  " + comboStr + "  " + energyBar
+	}
+
 	if len(m.siteClears) > 0 {
 		var names []string
 		for name := range m.siteClears {
@@ -193,12 +199,25 @@ func (m *Model) renderHelp() string {
 	b.WriteString(fmt.Sprintf("\n  %s Delete  Cancel pending completions", dim.Render("delete")))
 	b.WriteString(fmt.Sprintf("\n  %s   F2     Open interactive filter panel", dim.Render("f2")))
 	b.WriteString(fmt.Sprintf("\n  %s   r      Context-aware training suggestion", dim.Render("r")))
+	b.WriteString(fmt.Sprintf("\n  %s   F4     Toggle PowerMode effects", dim.Render("f4")))
 	b.WriteString(fmt.Sprintf("\n  %s Ctrl+X   Disable Xdebug if detected", dim.Render("ctrl+x")))
 	b.WriteString("\n\n" + dim.Render("  Press ? or Esc to close help"))
 	return b.String()
 }
 
 func (m *Model) View() string {
+	borderColor := m.powerMode.BorderColor()
+	if m.powerMode.Level() > 0 {
+		statusStyle = statusStyle.BorderForeground(borderColor)
+		if m.powerMode.PulseFrames()%2 == 0 {
+			eventsStyle = eventsStyle.BorderForeground(borderColor)
+		} else {
+			eventsStyle = eventsStyle.BorderForeground(lipgloss.Color("33"))
+		}
+	} else {
+		statusStyle = statusStyle.BorderForeground(lipgloss.Color("62"))
+		eventsStyle = eventsStyle.BorderForeground(lipgloss.Color("33"))
+	}
 	status := statusStyle.Render(m.renderStatus())
 
 	if m.showHelp {

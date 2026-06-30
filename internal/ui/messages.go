@@ -15,3 +15,5 @@ type engineEventMsg struct {
 type fsCompleteMsg struct {
 	completions []string
 }
+
+type powerPulseMsg struct{}

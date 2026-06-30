@@ -47,7 +47,7 @@ The TUI opens automatically. Events appear in real-time, and you can type comman
 
 ```
   ● drupal-watcher  PID: 12345  Uptime: 5m
-  Memory: 2.1 MB ▂▃▄▅▆▇█  |  Changes: 14  |  Clears: 3  |  site1: 2  site2: 1
+  Memory: 2.1 MB ▂▃▄▅▆▇█  |  Changes: 14  |  Clears: 3  |  ⚡ x5  ▓▓▓▓░░░░  |  site1: 2  site2: 1
 
   ┌──────────────────────────────────────────────────────────────┐
   │ 10:00:01  ℹ  Waiting for file changes...                     │
@@ -141,6 +141,7 @@ While the TUI is running, type commands at the prompt:
 | `help`                     | Show available commands and keybinds   |
 | `star`                     | Open GitHub repo in browser            |
 | `dismiss`                  | Hide the star banner permanently       |
+| `powermode`                | Toggle PowerMode visual effects        |
 | `dashboard`                | Toggle live dashboard panel            |
 | `stop` / `quit` / `exit`   | Stop the watcher                       |
 
@@ -158,10 +159,28 @@ While the TUI is running, type commands at the prompt:
 | `Insert`  | File system path scan for autocomplete     |
 | `Delete`  | Cancel pending completions                 |
 | `F2`      | Open interactive filter panel (extension)  |
+| `F4`      | Toggle PowerMode visual effects            |
 | `r`       | Get a context-aware training suggestion    |
 | `Ctrl+X`  | Disable Xdebug if detected                 |
 
 The status line shows memory usage with a live sparkline, change/clear counters, and per-site clear breakdowns when multiple sites are active.
+
+## PowerMode
+
+PowerMode adds energetic visual feedback when the watcher detects rapid file changes. Inspired by the VS Code Power Mode extension, it turns bursts of activity into a more engaging terminal experience.
+
+When multiple file changes or cache clears arrive within a short window (2s), a combo counter builds up and visual effects intensify:
+
+| Combo | Level | Effects |
+|---|---|---|
+| 0-2 | Normal | No effects |
+| 3-5 | Warm | Status bar border turns orange, combo counter and energy bar appear |
+| 6-10 | Hot | Border shifts to deep orange, particles animate, screen pulses subtly |
+| 11+ | Power | Red animated border, intense particles (✦ ✧ ⚡ ★ ♦), full energy bar, screen pulses |
+
+The **combo counter** (`⚡ x5`) and **energy bar** (`▓▓▓▓░░░░`) appear on the status line when activity ramps up. Energy decays during idle periods.
+
+Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
 ## Interactive CLI Commands
 

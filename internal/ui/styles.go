@@ -50,4 +50,13 @@ var (
 	successStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("42")).SetString(" ✔ ")
 	warnStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("220")).SetString(" ⚠ ")
 	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).SetString(" ✖ ")
+
+	comboNormal = lipgloss.Color("33")
+	comboWarm   = lipgloss.Color("214")
+	comboHot    = lipgloss.Color("208")
+	comboPower  = lipgloss.Color("196")
+
+	energyBarStyle = lipgloss.NewStyle().Padding(0, 1)
+	comboStyle     = lipgloss.NewStyle().Padding(0, 1)
+	pulseBorder    = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("196")).Padding(0, 1)
 )

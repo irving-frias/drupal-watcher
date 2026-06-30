@@ -115,6 +115,8 @@ type Model struct {
 
 	trainingSuggestion *training.Suggestion
 	trainingInitOnce   sync.Once
+
+	powerMode *PowerMode
 }
 
 func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *Model {
@@ -156,6 +158,7 @@ func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *
 			Title:       "Loading...",
 			Description: "Training data loading",
 		},
+		powerMode: NewPowerMode(),
 	}
 }
 
@@ -211,7 +214,7 @@ func (m *Model) addToHistory(cmd string) {
 	}
 }
 
-var commands = []string{"status", "stats", "filter", "star", "dismiss", "help", "stop", "quit", "exit"}
+var commands = []string{"status", "stats", "filter", "star", "dismiss", "help", "stop", "quit", "exit", "powermode"}
 
 func (m *Model) updateStatus() {
 	uptime := time.Since(m.engineInfo.StartTime())

@@ -99,6 +99,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 
+		case "f4":
+			m.powerMode.Toggle()
+			status := "disabled"
+			if m.powerMode.IsActive() {
+				status = "enabled"
+			}
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   "PowerMode " + status,
+				Style:     infoStyle,
+			})
+			return m, nil
+
 		case "insert":
 			m.completions = nil
 			m.fsCompletions = nil
@@ -247,6 +260,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.updateStatus()
+		m.powerMode.Tick()
 		m.viewport.SetContent(m.renderEvents())
 		if m.autoScroll {
 			m.viewport.GotoBottom()
@@ -297,6 +311,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Style:     errorStyle,
 			})
 		}
+		m.powerMode.Punch()
 		m.viewport.SetContent(m.renderEvents())
 		if m.autoScroll {
 			m.viewport.GotoBottom()
@@ -502,6 +517,18 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),
 			Content:   "Star banner dismissed permanently. Type " + cyan.Render("star") + " to reopen.",
+			Style:     infoStyle,
+		})
+
+	case "powermode":
+		m.powerMode.Toggle()
+		status := "disabled"
+		if m.powerMode.IsActive() {
+			status = "enabled"
+		}
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "PowerMode " + status,
 			Style:     infoStyle,
 		})
 
