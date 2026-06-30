@@ -40,6 +40,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.Width = cw - 4
 		m.viewport.Height = vpHeight
 		m.input.Width = cw - 6
+
+		if m.gif.Active() {
+			m.gif.Resize(cw-4, vpHeight)
+		}
 		return m, nil
 
 	case fsCompleteMsg:
@@ -258,6 +262,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+	case gifFrameMsg:
+		if m.gif.Active() {
+			m.gif.NextFrame()
+			return m, m.gifTickCmd()
+		}
+		return m, nil
+
 	case tickMsg:
 		m.updateStatus()
 		m.powerMode.Tick()
@@ -445,6 +456,130 @@ func (m *Model) completeInput() {
 	}
 }
 
+func (m *Model) executeGifCommand(parts []string) tea.Cmd {
+	if len(parts) == 1 {
+		if m.gif.Enabled() {
+			path := m.gif.Path()
+			if path == "" {
+				path = "default"
+			}
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   fmt.Sprintf("GIF background: %s (%d frames)", path, m.gif.NumFrames()),
+				Style:     infoStyle,
+			})
+		} else if m.gif.Active() {
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   "GIF background: disabled. Use 'gif on' to enable.",
+				Style:     infoStyle,
+			})
+		} else {
+			errMsg := m.gif.LastError()
+			if errMsg == "" {
+				errMsg = "failed to load GIF background"
+			}
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   fmt.Sprintf("GIF background: unavailable — %s", errMsg),
+				Style:     warnStyle,
+			})
+		}
+		return nil
+	}
+
+	switch parts[1] {
+	case "off":
+		if !m.gif.Active() {
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   "No GIF background active",
+				Style:     warnStyle,
+			})
+			return nil
+		}
+		m.gif.SetEnabled(false)
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "GIF background disabled",
+			Style:     infoStyle,
+		})
+		return nil
+
+	case "on":
+		if !m.gif.Active() {
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   "No GIF background loaded. Use 'gif <path>' or 'gif default'",
+				Style:     warnStyle,
+			})
+			return nil
+		}
+		m.gif.SetEnabled(true)
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "GIF background enabled",
+			Style:     infoStyle,
+		})
+		return m.gifTickCmd()
+
+	case "default":
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "Loading default GIF background...",
+			Style:     infoStyle,
+		})
+		m.gif.Load("default")
+		if m.gif.Active() {
+			m.gif.SetEnabled(true)
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   fmt.Sprintf("Default GIF background loaded (%d frames)", m.gif.NumFrames()),
+				Style:     successStyle,
+			})
+			return m.gifTickCmd()
+		}
+		errMsg := m.gif.LastError()
+		if errMsg == "" {
+			errMsg = "unknown error"
+		}
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   fmt.Sprintf("Failed to load default GIF: %s", errMsg),
+			Style:     errorStyle,
+		})
+		return nil
+
+	default:
+		path := strings.Join(parts[1:], " ")
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   fmt.Sprintf("Loading GIF: %s...", path),
+			Style:     infoStyle,
+		})
+		m.gif.Load(path)
+		if m.gif.Active() {
+			m.gif.SetEnabled(true)
+			m.pushEvent(eventLine{
+				Timestamp: time.Now().Format("15:04:05"),
+				Content:   fmt.Sprintf("GIF background loaded: %s (%d frames)", path, m.gif.NumFrames()),
+				Style:     successStyle,
+			})
+			return m.gifTickCmd()
+		}
+		errMsg := m.gif.LastError()
+		if errMsg == "" {
+			errMsg = "unknown error"
+		}
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   fmt.Sprintf("Failed to load GIF: %s", errMsg),
+			Style:     errorStyle,
+		})
+		return nil
+	}
+}
+
 func (m *Model) executeCommand(cmd string) tea.Cmd {
 	parts := strings.Fields(cmd)
 	if len(parts) == 0 {
@@ -534,6 +669,8 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 
 	case "stop", "quit", "exit":
 		return tea.Quit
+	case "gif":
+		return m.executeGifCommand(parts)
 	default:
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),

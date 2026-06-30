@@ -47,6 +47,7 @@ lintCommands:
   .yml: yaml automatic
   .yaml: yaml automatic
 phpCsStandard: ""
+gifBackground: ""
 watchMode: auto
 pollInterval: 2000
 eventBufferSize: 500

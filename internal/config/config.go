@@ -38,6 +38,7 @@ type Config struct {
 	WatchMode           string            `json:"watchMode,omitempty" mapstructure:"watchMode"`
 	PollInterval        int               `json:"pollInterval,omitempty" mapstructure:"pollInterval"`
 	EventBufferSize     int               `json:"eventBufferSize,omitempty" mapstructure:"eventBufferSize"`
+	GIFBackground       string            `json:"gifBackground,omitempty" mapstructure:"gifBackground"`
 	resolvedSites       []core.SiteInfo
 }
 
@@ -463,6 +464,7 @@ func (m *Manager) saveYamlConfig(cfg Config, root string) error {
 	v.Set("watchMode", cfg.WatchMode)
 	v.Set("pollInterval", cfg.PollInterval)
 	v.Set("eventBufferSize", cfg.EventBufferSize)
+	v.Set("gifBackground", cfg.GIFBackground)
 	if err := v.WriteConfigAs(yp); err != nil {
 		return err
 	}

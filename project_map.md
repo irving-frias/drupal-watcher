@@ -55,6 +55,7 @@ internal/
   ├── metrics/                — Runtime stats: changes, clears, errors per minute
   ├── training/               — Training suggestions (training.json)
   ├── ui/                     — Bubble Tea TUI (model, view, update, styles, messages, powermode)
+  │   └── gifbg/              — GIF background: decoder, half-block ANSI grid renderer, default procedural GIF
   ├── utils/                  — Colors (pterm), formatting, section printing
   ├── validate/               — Config validation
   └── xdebug/                 — Xdebug detection + disable
@@ -272,6 +273,11 @@ Filter:
 | eventbus | `New/Subscribe/Publish` | Event bus |
 | ui | `NewModel/Run/RunContext` | TUI lifecycle |
 | ui | `NewPowerMode` | PowerMode |
+| gifbg | `New` | Create GIF background (loads file or default) |
+| gifbg | `Load/SetEnabled/Resize` | GIF lifecycle |
+| gifbg | `RowBGColor/AverageColor` | Per-row color sampling for compositing |
+| gifbg | `BGSequence` | ANSI 24-bit background sequence |
+| gifbg | `NextFrame/FrameDuration/FrameRows` | Frame animation |
 | core | various interfaces | Domain contracts |
 | adapters | various `New*` | Implementation factories |
 
@@ -285,6 +291,7 @@ internal/health/                  — health check
 internal/metrics/                 — stats tracking
 internal/training/                — suggestion loading
 internal/ui/                      — model, powermode
+internal/ui/gifbg/                — [no test files]
 internal/utils/                   — formatting
 internal/validate/                — config validation
 pkg/adapters/                     — watchers, lint, filters
@@ -295,5 +302,5 @@ pkg/adapters/                     — watchers, lint, filters
 ```
 routes, patterns, debounce, commandsPerPattern, skipLint,
 lintCommands, phpCsStandard, watchMode (auto|fsnotify|poll|hybrid),
-pollInterval, eventBufferSize
+pollInterval, eventBufferSize, gifBackground
 ```

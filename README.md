@@ -131,19 +131,21 @@ Accepts a JSON object mapping file extensions to drush commands.
 
 While the TUI is running, type commands at the prompt:
 
-| Command                    | Description                            |
-|----------------------------|----------------------------------------|
-| Command                    | Description                            |
-|----------------------------|----------------------------------------|
-| `status`                   | Show stats, memory, and kernel watches |
-| `stats`                    | Clear counts per site                  |
-| `filter <site>`            | Filter events by site name             |
-| `help`                     | Show available commands and keybinds   |
-| `star`                     | Open GitHub repo in browser            |
-| `dismiss`                  | Hide the star banner permanently       |
-| `powermode`                | Toggle PowerMode visual effects        |
-| `dashboard`                | Toggle live dashboard panel            |
-| `stop` / `quit` / `exit`   | Stop the watcher                       |
+| Command                       | Description                               |
+|-------------------------------|-------------------------------------------|
+| `status`                      | Show stats, memory, and kernel watches    |
+| `stats`                       | Clear counts per site                     |
+| `filter <site>`               | Filter events by site name                |
+| `help`                        | Show available commands and keybinds      |
+| `star`                        | Open GitHub repo in browser               |
+| `dismiss`                     | Hide the star banner permanently          |
+| `gif`                         | Show GIF background status                |
+| `gif on` / `gif off`          | Enable / disable GIF background           |
+| `gif default`                 | Reset to the embedded default GIF         |
+| `gif <path>`                  | Load and display an animated GIF          |
+| `powermode`                   | Toggle PowerMode visual effects           |
+| `dashboard`                   | Toggle live dashboard panel               |
+| `stop` / `quit` / `exit`      | Stop the watcher                          |
 
 ### TUI keybinds
 
@@ -212,6 +214,21 @@ When 50+ files change in a single batch (e.g. `drush cex`, git checkout, compose
 - Skull timer lasts ~20 ticks
 
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
+
+## Animated GIF Background
+
+The central events panel supports an animated GIF background. When enabled, the GIF renders behind the event log text using ANSI half-block characters (`▀`) with full 24-bit color, creating a subtle animated backdrop.
+
+```bash
+gif /path/to/animated.gif    # load any GIF89a file
+gif default                  # reset to embedded procedural GIF
+gif on                       # enable background
+gif off                      # disable background
+```
+
+The GIF is decoded in pure Go using `image/gif` — no external dependencies required. Each frame is sampled to a half-block grid matching the terminal size. Rendering is purely computational (no subprocesses), so it works on any terminal that supports 24-bit color (truecolor).
+
+A 30-frame default GIF (dark blue/purple wave pattern) is embedded in the binary as a fallback.
 
 ## Interactive CLI Commands
 
@@ -498,7 +515,7 @@ internal/
     examples/
       slack.go           → Demo: Slack webhook notifier
   ui/                    → Bubble Tea TUI (model, view, update, styles)
-  config/                → Config management (YAML + env vars), Drupal root detection, PID files
+    gifbg/               → GIF background renderer (decoder, half-block ANSI grid, procedural default GIF)  config/                → Config management (YAML + env vars), Drupal root detection, PID files
   health/                → Liveness check (timestamp file every 30s)
   drush/                 → Drush resolution, execution, health checks
   metrics/               → Runtime statistics (changes, clears, errors per minute)
