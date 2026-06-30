@@ -180,6 +180,13 @@ When multiple file changes or cache clears arrive within a short window (2s), a 
 
 The **combo counter** (`⚡ x5`) and **energy bar** (`▓▓▓▓░░░░`) appear on the status line when activity ramps up. Energy decays during idle periods.
 
+PowerMode also plays **synthesized tones** through your speakers when levels increase:
+- **Warm**: single C5 tone (523 Hz)
+- **Hot**: ascending C5→E5 two-tone arpeggio
+- **Power**: ascending C5→E5→G5→C6 four-tone arpeggio
+- Each combo increment plays a quick pitch blip that rises with combo count
+- Sound is optional and silently degrades if audio initialization fails
+
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
 ## Interactive CLI Commands

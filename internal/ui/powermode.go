@@ -46,12 +46,14 @@ type PowerMode struct {
 	lastHit     time.Time
 	particles   []Particle
 	pulseFrames int
+	sound       *SoundPlayer
 }
 
 func NewPowerMode() *PowerMode {
 	return &PowerMode{
 		active:    true,
 		particles: make([]Particle, 0, maxParticles),
+		sound:     NewSoundPlayer(),
 	}
 }
 
@@ -123,6 +125,11 @@ func (pm *PowerMode) Punch() {
 
 	prevLevel := pm.level
 	pm.updateLevel()
+
+	pm.sound.PlayLevel(pm.level, prevLevel)
+	if pm.combo > 1 && pm.level == prevLevel {
+		pm.sound.PlayComboUp(pm.combo)
+	}
 
 	if pm.level > prevLevel && pm.level >= LevelHot {
 		pm.pulseFrames = pulseDuration
