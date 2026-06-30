@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 )
 
-const maxDecodeDim = 320
+const maxDecodeDim = 1920
 
 type frameData struct {
 	RGBA  *image.RGBA

@@ -19,12 +19,12 @@ func renderHalfBlock(rgba *image.RGBA, cols, rows int) []string {
 	for row := 0; row < rows; row++ {
 		var buf strings.Builder
 		for col := 0; col < cols; col++ {
-			topY := row * sh / rows
-			bottomY := (row*2 + 1) * sh / (rows * 2)
-			topX := col * sw / cols
+			nx := float64(col) / float64(cols)
+			nyTop := float64(row) / float64(rows)
+			nyBot := float64(row*2+1) / float64(rows*2)
 
-			top := pixelAt(rgba, topX, topY, sw, sh)
-			bottom := pixelAt(rgba, topX, bottomY, sw, sh)
+			top := sampleBilinear(rgba, nx, nyTop)
+			bottom := sampleBilinear(rgba, nx, nyBot)
 
 			if top == bottom {
 				buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm ", top.R, top.G, top.B))
@@ -37,6 +37,73 @@ func renderHalfBlock(rgba *image.RGBA, cols, rows int) []string {
 		grid[row] = buf.String()
 	}
 	return grid
+}
+
+func sampleBilinear(img *image.RGBA, nx, ny float64) color.RGBA {
+	b := img.Bounds()
+	w := float64(b.Dx())
+	h := float64(b.Dy())
+	if w == 0 || h == 0 {
+		return color.RGBA{}
+	}
+
+	x := nx * (w - 1)
+	y := ny * (h - 1)
+
+	ix := int(x)
+	iy := int(y)
+	fx := x - float64(ix)
+	fy := y - float64(iy)
+
+	if ix < 0 {
+		ix = 0
+	}
+	if iy < 0 {
+		iy = 0
+	}
+	maxX := b.Dx() - 1
+	maxY := b.Dy() - 1
+	if ix >= maxX {
+		ix = maxX
+	}
+	if iy >= maxY {
+		iy = maxY
+	}
+
+	ix0 := ix
+	ix1 := ix + 1
+	iy0 := iy
+	iy1 := iy + 1
+	if ix1 > maxX {
+		ix1 = maxX
+	}
+	if iy1 > maxY {
+		iy1 = maxY
+	}
+
+	c00 := rgbaToFloat(img.RGBAAt(ix0, iy0))
+	c10 := rgbaToFloat(img.RGBAAt(ix1, iy0))
+	c01 := rgbaToFloat(img.RGBAAt(ix0, iy1))
+	c11 := rgbaToFloat(img.RGBAAt(ix1, iy1))
+
+	return color.RGBA{
+		R: uint8(blerp(c00.R, c10.R, c01.R, c11.R, fx, fy)),
+		G: uint8(blerp(c00.G, c10.G, c01.G, c11.G, fx, fy)),
+		B: uint8(blerp(c00.B, c10.B, c01.B, c11.B, fx, fy)),
+		A: 255,
+	}
+}
+
+type floatColor struct {
+	R, G, B float64
+}
+
+func rgbaToFloat(c color.RGBA) floatColor {
+	return floatColor{float64(c.R), float64(c.G), float64(c.B)}
+}
+
+func blerp(c00, c10, c01, c11 float64, fx, fy float64) float64 {
+	return c00*(1-fx)*(1-fy) + c10*fx*(1-fy) + c01*(1-fx)*fy + c11*fx*fy
 }
 
 func pixelAt(img *image.RGBA, x, y, w, h int) color.RGBA {
@@ -75,8 +142,8 @@ func (bg *Background) RowBGColor(row int) color.RGBA {
 		return color.RGBA{10, 10, 20, 255}
 	}
 
-	y := row * sh / bg.rows
-	return pixelAt(rgba, 0, y, sw, sh)
+	ny := float64(row) / float64(bg.rows)
+	return sampleBilinear(rgba, 0, ny)
 }
 
 func BGSequence(c color.RGBA) string {
