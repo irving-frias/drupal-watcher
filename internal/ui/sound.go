@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"encoding/binary"
 	"math"
+	"os"
 	"os/exec"
 	"runtime"
 	"time"
 )
 
-type SoundPlayer struct{}
+type SoundPlayer struct {
+	tmpDir string
+}
 
 func NewSoundPlayer() *SoundPlayer {
-	return &SoundPlayer{}
+	dir, err := os.MkdirTemp("", "dw-sound")
+	if err != nil {
+		dir = ""
+	}
+	return &SoundPlayer{tmpDir: dir}
 }
 
 func (sp *SoundPlayer) PlayLevel(level PowerLevel, prevLevel PowerLevel) {
@@ -21,19 +28,19 @@ func (sp *SoundPlayer) PlayLevel(level PowerLevel, prevLevel PowerLevel) {
 	}
 	switch level {
 	case LevelWarm:
-		playTone(523.25, 100*time.Millisecond)
+		sp.playTone(523.25, 100*time.Millisecond)
 	case LevelHot:
-		playTone(523.25, 80*time.Millisecond)
+		sp.playTone(523.25, 80*time.Millisecond)
 		time.Sleep(20 * time.Millisecond)
-		playTone(659.25, 80*time.Millisecond)
+		sp.playTone(659.25, 80*time.Millisecond)
 	case LevelPower:
-		playTone(523.25, 60*time.Millisecond)
+		sp.playTone(523.25, 60*time.Millisecond)
 		time.Sleep(15 * time.Millisecond)
-		playTone(659.25, 60*time.Millisecond)
+		sp.playTone(659.25, 60*time.Millisecond)
 		time.Sleep(15 * time.Millisecond)
-		playTone(783.99, 60*time.Millisecond)
+		sp.playTone(783.99, 60*time.Millisecond)
 		time.Sleep(15 * time.Millisecond)
-		playTone(1046.50, 60*time.Millisecond)
+		sp.playTone(1046.50, 60*time.Millisecond)
 	}
 }
 
@@ -45,14 +52,18 @@ func (sp *SoundPlayer) PlayComboUp(combo int) {
 	if base > 880 {
 		base = 880
 	}
-	playTone(base, 60*time.Millisecond)
+	sp.playTone(base, 60*time.Millisecond)
 }
 
-func (sp *SoundPlayer) Close() {}
+func (sp *SoundPlayer) Close() {
+	if sp.tmpDir != "" {
+		os.RemoveAll(sp.tmpDir)
+	}
+}
 
-func playTone(freq float64, dur time.Duration) {
+func (sp *SoundPlayer) playTone(freq float64, dur time.Duration) {
 	data := generateWAV(freq, dur, 44100)
-	playWAV(data)
+	sp.playWAV(data)
 }
 
 func generateWAV(freq float64, dur time.Duration, sampleRate int) []byte {
@@ -97,19 +108,47 @@ func generateWAV(freq float64, dur time.Duration, sampleRate int) []byte {
 	binary.LittleEndian.PutUint32(h[40:44], uint32(dataSize))
 
 	buf.Write(h)
-	binary.Write(&buf, binary.LittleEndian, pcm)
+	buf.Write(encodePCM16(pcm))
 	return buf.Bytes()
 }
 
-func playWAV(data []byte) {
+func encodePCM16(samples []int16) []byte {
+	b := make([]byte, len(samples)*2)
+	for i, s := range samples {
+		binary.LittleEndian.PutUint16(b[i*2:], uint16(s))
+	}
+	return b
+}
+
+func (sp *SoundPlayer) playWAV(data []byte) {
+	if sp.tmpDir == "" {
+		return
+	}
+
 	switch runtime.GOOS {
 	case "darwin":
-		cmd := exec.Command("afplay", "-")
-		cmd.Stdin = bytes.NewReader(data)
-		cmd.Start()
+		f, err := os.CreateTemp(sp.tmpDir, "*.wav")
+		if err != nil {
+			return
+		}
+		f.Write(data)
+		f.Close()
+		exec.Command("afplay", f.Name()).Start()
+
 	case "linux":
-		if hasExec("paplay") {
+		// Docker: PULSE_SERVER env var set by docker-compose
+		pulseSrv := os.Getenv("PULSE_SERVER")
+		if pulseSrv != "" && hasExec("paplay") {
 			cmd := exec.Command("paplay", "--raw", "--rate=44100", "--channels=1", "--format=s16le")
+			cmd.Stdin = bytes.NewReader(data[44:])
+			cmd.Env = append(os.Environ(), "PULSE_SERVER="+pulseSrv)
+			cmd.Start()
+		} else if hasExec("paplay") {
+			cmd := exec.Command("paplay", "--raw", "--rate=44100", "--channels=1", "--format=s16le")
+			cmd.Stdin = bytes.NewReader(data[44:])
+			cmd.Start()
+		} else if hasExec("pw-play") {
+			cmd := exec.Command("pw-play", "--rate=44100", "--channels=1", "--format=s16", "-")
 			cmd.Stdin = bytes.NewReader(data[44:])
 			cmd.Start()
 		} else if hasExec("aplay") {
@@ -117,15 +156,14 @@ func playWAV(data []byte) {
 			cmd.Stdin = bytes.NewReader(data[44:])
 			cmd.Start()
 		} else if hasExec("powershell.exe") {
-			cmd := exec.Command("powershell.exe", "-c",
-				"[console]::beep(440,200)")
-			cmd.Start()
+			exec.Command("powershell.exe", "-c",
+				"[console]::beep(440,200)").Start()
 		}
+
 	case "windows":
 		if hasExec("powershell.exe") {
-			cmd := exec.Command("powershell.exe", "-c",
-				"[console]::beep(440,200)")
-			cmd.Start()
+			exec.Command("powershell.exe", "-c",
+				"[console]::beep(440,200)").Start()
 		}
 	}
 }

@@ -195,6 +195,42 @@ Sound works on all platforms without extra dependencies. It generates tones in p
 
 No CGO, no shared library dependencies. If no audio player is found, sound is silently disabled.
 
+### Sound in Docker
+
+When running inside a Docker container (e.g. DDEV, Lando), sound requires forwarding the host audio system to the container. The watcher automatically detects `PULSE_SERVER` environment variable.
+
+**1. Add a docker-compose override** (`.ddev/docker-compose.audio.yaml` for DDEV):
+
+```yaml
+version: "3.6"
+services:
+  web:
+    environment:
+      - PULSE_SERVER=unix:/tmp/pulse/pulseaudio.socket
+    volumes:
+      - /tmp/pulse/pulseaudio.socket:/tmp/pulse/pulseaudio.socket
+```
+
+**2. Start PulseAudio on the host** (one-time):
+
+```bash
+# macOS (install PulseAudio via brew)
+brew install pulseaudio
+pulseaudio --load=module-native-protocol-unix --exit-idle-time=-1 --daemon
+
+# Linux (usually already running)
+pactl info
+```
+
+**3. Verify inside the container:**
+
+```bash
+docker exec -it <container> bash
+paplay --raw /dev/urandom  # should produce static
+```
+
+If you don't want to set up PulseAudio, sound silently degrades — PowerMode visual effects still work.
+
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
 ## Interactive CLI Commands
