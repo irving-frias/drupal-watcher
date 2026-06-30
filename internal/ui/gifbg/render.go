@@ -7,30 +7,23 @@ import (
 	"strings"
 )
 
-func renderHalfBlock(rgba *image.RGBA, cols, rows int) []string {
-	b := rgba.Bounds()
-	sw := b.Dx()
-	sh := b.Dy()
-	if sw == 0 || sh == 0 {
-		return nil
-	}
-
+func renderFrame(f *Frame, cols, rows int) []string {
 	grid := make([]string, rows)
 	for row := 0; row < rows; row++ {
 		var buf strings.Builder
+		base := row * cols * 2
 		for col := 0; col < cols; col++ {
-			nx := float64(col) / float64(cols)
-			nyTop := float64(row) / float64(rows)
-			nyBot := float64(row*2+1) / float64(rows*2)
+			topPacked := f.Cells[base+col*2+cellTopIdx]
+			botPacked := f.Cells[base+col*2+cellBotIdx]
 
-			top := sampleBilinear(rgba, nx, nyTop)
-			bottom := sampleBilinear(rgba, nx, nyBot)
-
-			if top == bottom {
-				buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm ", top.R, top.G, top.B))
+			if topPacked == botPacked {
+				r, g, b := unpackRGB(topPacked)
+				buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm ", r, g, b))
 			} else {
+				tr, tg, tb := unpackRGB(topPacked)
+				br, bg, bb := unpackRGB(botPacked)
 				buf.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm▀",
-					top.R, top.G, top.B, bottom.R, bottom.G, bottom.B))
+					tr, tg, tb, br, bg, bb))
 			}
 		}
 		buf.WriteString("\x1b[0m")
@@ -39,67 +32,99 @@ func renderHalfBlock(rgba *image.RGBA, cols, rows int) []string {
 	return grid
 }
 
-func sampleBilinear(img *image.RGBA, nx, ny float64) color.RGBA {
-	b := img.Bounds()
-	w := float64(b.Dx())
-	h := float64(b.Dy())
-	if w == 0 || h == 0 {
-		return color.RGBA{}
+func renderFrameSubsample(f *Frame, cols, rows int) []string {
+	srcCols := f.Cols
+	srcRows := f.Rows
+	if srcCols == 0 || srcRows == 0 {
+		return nil
 	}
 
-	x := nx * (w - 1)
-	y := ny * (h - 1)
+	grid := make([]string, rows)
+	for row := 0; row < rows; row++ {
+		var buf strings.Builder
+		sy := row * srcRows / rows
+		if sy >= srcRows {
+			sy = srcRows - 1
+		}
+		base := sy * srcCols * 2
 
-	ix := int(x)
-	iy := int(y)
-	fx := x - float64(ix)
-	fy := y - float64(iy)
+		for col := 0; col < cols; col++ {
+			sx := col * srcCols / cols
+			if sx >= srcCols {
+				sx = srcCols - 1
+			}
 
-	if ix < 0 {
-		ix = 0
+			topPacked := f.Cells[base+sx*2+cellTopIdx]
+			botPacked := f.Cells[base+sx*2+cellBotIdx]
+
+			if topPacked == botPacked {
+				r, g, b := unpackRGB(topPacked)
+				buf.WriteString(fmt.Sprintf("\x1b[48;2;%d;%d;%dm ", r, g, b))
+			} else {
+				tr, tg, tb := unpackRGB(topPacked)
+				br, bg, bb := unpackRGB(botPacked)
+				buf.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm\x1b[48;2;%d;%d;%dm▀",
+					tr, tg, tb, br, bg, bb))
+			}
+		}
+		buf.WriteString("\x1b[0m")
+		grid[row] = buf.String()
 	}
-	if iy < 0 {
-		iy = 0
+	return grid
+}
+
+func (bg *Background) RowBGColor(row int) color.RGBA {
+	if bg == nil || !bg.active || bg.numFrames == 0 {
+		return color.RGBA{10, 10, 20, 255}
 	}
-	maxX := b.Dx() - 1
-	maxY := b.Dy() - 1
-	if ix >= maxX {
-		ix = maxX
-	}
-	if iy >= maxY {
-		iy = maxY
+	f := &bg.frames[bg.frameIdx]
+	if f.Cells == nil || f.Cols == 0 {
+		return color.RGBA{10, 10, 20, 255}
 	}
 
-	ix0 := ix
-	ix1 := ix + 1
-	iy0 := iy
-	iy1 := iy + 1
-	if ix1 > maxX {
-		ix1 = maxX
+	sy := row * f.Rows / bg.rows
+	if sy >= f.Rows {
+		sy = f.Rows - 1
 	}
-	if iy1 > maxY {
-		iy1 = maxY
+	if sy < 0 {
+		sy = 0
 	}
 
-	c00 := rgbaToFloat(img.RGBAAt(ix0, iy0))
-	c10 := rgbaToFloat(img.RGBAAt(ix1, iy0))
-	c01 := rgbaToFloat(img.RGBAAt(ix0, iy1))
-	c11 := rgbaToFloat(img.RGBAAt(ix1, iy1))
+	r, g, b := f.TopAt(0, sy)
+	return color.RGBA{R: r, G: g, B: b, A: 255}
+}
 
+func BGSequence(c color.RGBA) string {
+	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", c.R, c.G, c.B)
+}
+
+func (bg *Background) AverageColor() color.RGBA {
+	if bg == nil || !bg.active || bg.numFrames == 0 {
+		return color.RGBA{10, 10, 20, 255}
+	}
+	f := &bg.frames[bg.frameIdx]
+	if f.Cells == nil || len(f.Cells) == 0 {
+		return color.RGBA{10, 10, 20, 255}
+	}
+
+	var rSum, gSum, bSum uint64
+	count := len(f.Cells)
+	for i := 0; i < count; i += 2 {
+		tr, tg, tb := unpackRGB(f.Cells[i])
+		rSum += uint64(tr)
+		gSum += uint64(tg)
+		bSum += uint64(tb)
+	}
+	n := uint64(count / 2)
+	if n == 0 {
+		return color.RGBA{10, 10, 20, 255}
+	}
 	return color.RGBA{
-		R: uint8(blerp(c00.R, c10.R, c01.R, c11.R, fx, fy)),
-		G: uint8(blerp(c00.G, c10.G, c01.G, c11.G, fx, fy)),
-		B: uint8(blerp(c00.B, c10.B, c01.B, c11.B, fx, fy)),
+		R: uint8(rSum / n),
+		G: uint8(gSum / n),
+		B: uint8(bSum / n),
 		A: 255,
 	}
-}
-
-type floatColor struct {
-	R, G, B float64
-}
-
-func rgbaToFloat(c color.RGBA) floatColor {
-	return floatColor{float64(c.R), float64(c.G), float64(c.B)}
 }
 
 func blerp(c00, c10, c01, c11 float64, fx, fy float64) float64 {
@@ -124,58 +149,6 @@ func pixelAt(img *image.RGBA, x, y, w, h int) color.RGBA {
 		R: uint8(r >> 8),
 		G: uint8(g >> 8),
 		B: uint8(b >> 8),
-		A: 255,
-	}
-}
-
-func (bg *Background) RowBGColor(row int) color.RGBA {
-	if bg == nil || !bg.active || bg.numFrames == 0 {
-		return color.RGBA{10, 10, 20, 255}
-	}
-	rgba := bg.frames[bg.frameIdx].RGBA
-	if rgba == nil {
-		return color.RGBA{10, 10, 20, 255}
-	}
-	sw := rgba.Bounds().Dx()
-	sh := rgba.Bounds().Dy()
-	if sw == 0 || sh == 0 {
-		return color.RGBA{10, 10, 20, 255}
-	}
-
-	ny := float64(row) / float64(bg.rows)
-	return sampleBilinear(rgba, 0, ny)
-}
-
-func BGSequence(c color.RGBA) string {
-	return fmt.Sprintf("\x1b[48;2;%d;%d;%dm", c.R, c.G, c.B)
-}
-
-func (bg *Background) AverageColor() color.RGBA {
-	if bg == nil || !bg.active || bg.numFrames == 0 {
-		return color.RGBA{10, 10, 20, 255}
-	}
-	rgba := bg.frames[bg.frameIdx].RGBA
-	if rgba == nil {
-		return color.RGBA{10, 10, 20, 255}
-	}
-	b := rgba.Bounds()
-	total := uint64(b.Dx() * b.Dy())
-	if total == 0 {
-		return color.RGBA{10, 10, 20, 255}
-	}
-	var rSum, gSum, bSum uint64
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			px := rgba.RGBAAt(x, y)
-			rSum += uint64(px.R)
-			gSum += uint64(px.G)
-			bSum += uint64(px.B)
-		}
-	}
-	return color.RGBA{
-		R: uint8(rSum / total),
-		G: uint8(gSum / total),
-		B: uint8(bSum / total),
 		A: 255,
 	}
 }
