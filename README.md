@@ -187,6 +187,8 @@ PowerMode also plays **synthesized tones** through your speakers when levels inc
 - Each combo increment plays a quick pitch blip that rises with combo count
 - Sound is optional and silently degrades if audio initialization fails
 
+Sound requires CGO and is only available in locally-compiled binaries (e.g. `go install`). Pre-built binaries from GitHub Releases use `CGO_ENABLED=0` for portability, so audio is disabled in those builds.
+
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
 ## Interactive CLI Commands
