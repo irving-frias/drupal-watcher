@@ -61,6 +61,7 @@ type PowerMode struct {
 	overheatGlow  int
 	cooling       bool
 	coolingFrames int
+	skullTimer    int
 }
 
 func NewPowerMode() *PowerMode {
@@ -85,6 +86,7 @@ func (pm *PowerMode) Energy() float64   { return pm.energy }
 func (pm *PowerMode) PulseFrames() int  { return pm.pulseFrames }
 func (pm *PowerMode) OverheatGlow() int { return pm.overheatGlow }
 func (pm *PowerMode) Cooling() bool     { return pm.cooling }
+func (pm *PowerMode) SkullTimer() int   { return pm.skullTimer }
 
 func (pm *PowerMode) reset() {
 	pm.combo = 0
@@ -95,9 +97,10 @@ func (pm *PowerMode) reset() {
 	pm.overheatGlow = 0
 	pm.cooling = false
 	pm.coolingFrames = 0
+	pm.skullTimer = 0
 }
 
-func (pm *PowerMode) Punch() {
+func (pm *PowerMode) Punch(changes int) {
 	if !pm.active {
 		return
 	}
@@ -130,6 +133,17 @@ func (pm *PowerMode) Punch() {
 	if pm.cooling {
 		pm.cooling = false
 		pm.coolingFrames = 0
+	}
+
+	if changes >= 50 {
+		pm.skullTimer = 20
+		pm.pulseFrames = pulseDuration + 4
+		pm.overheatGlow = 12
+		pm.level = LevelPower
+		pm.energy = 1.0
+		pm.explosion()
+		pm.spawnSkull(changes)
+		return
 	}
 
 	if pm.level > prevLevel && pm.level >= LevelHot {
@@ -181,6 +195,9 @@ func (pm *PowerMode) Tick() {
 	}
 	if pm.overheatGlow > 0 {
 		pm.overheatGlow--
+	}
+	if pm.skullTimer > 0 {
+		pm.skullTimer--
 	}
 }
 
@@ -244,6 +261,27 @@ func (pm *PowerMode) updateLevel() {
 		pm.level = LevelWarm
 	default:
 		pm.level = LevelNormal
+	}
+}
+
+func (pm *PowerMode) spawnSkull(changes int) {
+	count := 1
+	if changes >= 200 {
+		count = 3
+	} else if changes >= 100 {
+		count = 2
+	}
+	for i := 0; i < count && len(pm.particles) < maxParticles; i++ {
+		pm.particles = append(pm.particles, Particle{
+			Char:    "💀",
+			X:       0.2 + rand.Float64()*0.6,
+			Y:       0.3 + rand.Float64()*0.3,
+			VX:      (rand.Float64() - 0.5) * 0.02,
+			VY:      -(0.01 + rand.Float64()*0.02),
+			Life:    30 + rand.Intn(20),
+			MaxLife: 50,
+			Typ:     ParticleSmoke,
+		})
 	}
 }
 
@@ -320,6 +358,12 @@ func (pm *PowerMode) tickParticles() {
 }
 
 func (pm *PowerMode) BorderColor() lipgloss.Color {
+	if pm.skullTimer > 0 {
+		if pm.skullTimer%2 == 0 {
+			return lipgloss.Color("255")
+		}
+		return lipgloss.Color("196")
+	}
 	if pm.cooling {
 		return lipgloss.Color("63")
 	}
@@ -351,15 +395,16 @@ func (pm *PowerMode) RenderCombo() string {
 	}
 
 	prefix := "⚡"
-	if pm.level == LevelHot {
-		prefix = "🔥"
-	}
-	if pm.level == LevelPower {
-		prefix = "💥"
-	}
-	if pm.cooling {
+	if pm.skullTimer > 0 {
+		prefix = "💀"
+		color = lipgloss.Color("255")
+	} else if pm.cooling {
 		prefix = "❄"
 		color = lipgloss.Color("63")
+	} else if pm.level == LevelHot {
+		prefix = "🔥"
+	} else if pm.level == LevelPower {
+		prefix = "💥"
 	}
 
 	style := lipgloss.NewStyle().Foreground(color).Bold(true)

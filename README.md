@@ -201,6 +201,16 @@ When events stop arriving and energy decays, the system enters **cooldown mode**
 - Cooldown tapers off gradually over ~30 ticks
 - A new event immediately cancels cooldown and resumes heating
 
+### Massive batch — 💀 Skull of Death
+
+When 50+ files change in a single batch (e.g. `drush cex`, git checkout, composer install), PowerMode triggers a **skull event**:
+- Combo icon becomes 💀, status line shows "💀 MASSIVE BATCH"
+- Border flashes white/red rapidly
+- Energy maxes out instantly, particles explode
+- Large 💀 particles float upward for several seconds
+- At 100+ files: 2 skulls; at 200+ files: 3 skulls
+- Skull timer lasts ~20 ticks
+
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
 ## Interactive CLI Commands

@@ -7,15 +7,15 @@ import (
 
 func TestPowerModeComboIncrement(t *testing.T) {
 	pm := NewPowerMode()
-	pm.Punch()
+	pm.Punch(0)
 	if pm.Combo() != 1 {
 		t.Fatalf("expected combo 1, got %d", pm.Combo())
 	}
-	pm.Punch()
+	pm.Punch(0)
 	if pm.Combo() != 2 {
 		t.Fatalf("expected combo 2, got %d", pm.Combo())
 	}
-	pm.Punch()
+	pm.Punch(0)
 	if pm.Combo() != 3 {
 		t.Fatalf("expected combo 3, got %d", pm.Combo())
 	}
@@ -94,7 +94,7 @@ func TestPowerModeToggle(t *testing.T) {
 func TestPowerModeInactiveDoesNotTrack(t *testing.T) {
 	pm := NewPowerMode()
 	pm.Toggle() // disable
-	pm.Punch()
+	pm.Punch(0)
 	if pm.Combo() != 0 {
 		t.Fatal("expected no combo tracking when inactive")
 	}
@@ -102,9 +102,9 @@ func TestPowerModeInactiveDoesNotTrack(t *testing.T) {
 
 func TestPowerModeResetOnDisable(t *testing.T) {
 	pm := NewPowerMode()
-	pm.Punch()
-	pm.Punch()
-	pm.Punch()
+	pm.Punch(0)
+	pm.Punch(0)
+	pm.Punch(0)
 	pm.energy = 0.5
 	pm.Toggle() // disable — should reset
 	if pm.Combo() != 0 || pm.Energy() != 0 || pm.Level() != LevelNormal {
@@ -199,9 +199,9 @@ func TestPowerModeRenderEnergyBar(t *testing.T) {
 
 func TestPowerModeMaxCombo(t *testing.T) {
 	pm := NewPowerMode()
-	pm.Punch()
-	pm.Punch()
-	pm.Punch()
+	pm.Punch(0)
+	pm.Punch(0)
+	pm.Punch(0)
 	if pm.MaxCombo() != 3 {
 		t.Fatalf("expected maxCombo 3, got %d", pm.MaxCombo())
 	}
@@ -218,7 +218,7 @@ func TestPowerModeEnergyCap(t *testing.T) {
 	pm.energy = 0.99
 	for i := 0; i < 100; i++ {
 		pm.combo = 50
-		pm.Punch()
+		pm.Punch(0)
 	}
 	if pm.Energy() > 1.0 {
 		t.Fatal("expected energy capped at 1.0")

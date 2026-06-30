@@ -60,6 +60,9 @@ func (m *Model) renderStatus() string {
 	if m.siteFilter != "" {
 		right += cyan.Render(" [filter: " + m.siteFilter + "]")
 	}
+	if m.powerMode.SkullTimer() > 0 {
+		right += lipgloss.NewStyle().Foreground(lipgloss.Color("255")).Bold(true).Render(" 💀 MASSIVE BATCH")
+	}
 	if m.powerMode.Cooling() && m.powerMode.Combo() > 0 {
 		right += lipgloss.NewStyle().Foreground(lipgloss.Color("63")).Render(" ❄ cooling")
 	}

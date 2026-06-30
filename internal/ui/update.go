@@ -311,7 +311,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Style:     errorStyle,
 			})
 		}
-		m.powerMode.Punch()
+		m.powerMode.Punch(evt.Changes)
 		m.viewport.SetContent(m.renderEvents())
 		if m.autoScroll {
 			m.viewport.GotoBottom()
