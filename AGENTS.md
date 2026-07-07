@@ -25,7 +25,9 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 <!-- codebase-memory-mcp:end -->
 
 ## Commands
-- **Test**: `go test ./...`
+- **Test all**: `go test ./...`
+- **Test source only**: `go test ./internal/... ./pkg/...`
+- **Test tests/ only**: `go test ./tests/...`
 - **Fresh test**: `go test -count=1 ./...`
 - **Vet**: `go vet ./...`
 - **Build**: `go build -o drupal-watcher ./cmd/drupal-watcher`
@@ -47,6 +49,25 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages, powermode, drupal_logo)
 - `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `LintChecker`)
 - `pkg/adapters/` — Adapter implementations (fsnotify, polling_watcher, hybrid_watcher, drush, regex filters, php_lint, yaml_lint, logger)
+
+## Test structure
+- `tests/` — External test packages (black-box tests, `package X_test`)
+  - `tests/pkg/adapters/` — Adapter tests (drush_executor, fsnotify, php_lint, yaml_lint)
+  - `tests/internal/config/` — Config manager tests
+  - `tests/internal/drush/` — Drush command tests
+  - `tests/internal/health/` — Health check tests
+  - `tests/internal/metrics/` — Metrics collection tests
+  - `tests/internal/training/` — Training suggestions tests
+  - `tests/internal/utils/` — Utility function tests
+- White-box tests (access unexported identifiers) stay colocated with source:
+  - `pkg/adapters/lint_cache_test.go` — uses unexported `fileChecksum()`
+  - `internal/app/modules/orchestrator/engine_test.go` — uses 9 unexported fields/methods
+  - `internal/ui/powermode_test.go` — uses 10 unexported fields/methods
+  - `internal/validate/validate_test.go` — uses unexported `validateCommand()`, `findPHPCS()`
+- Placeholder directories with doc.go templates:
+  - `internal/app/modules/executor/adapters/` — future executor adapters (Docker, SSH)
+  - `internal/app/modules/watcher/adapters/` — future watcher adapters (inotify, kqueue)
+  - `internal/app/modules/ui/providers/cli/` — future non-interactive CLI mode
 
 ## Guidelines
 - **All user-facing messages in English**
@@ -89,7 +110,7 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `core.EngineEvent` — Event emitted on file changes / cache clears (includes `Changes int` field for batch size, used by PowerMode skull detection)
 - `core.LintChecker` — Interface for syntax checking before cache clear
 - `core.LintResult` — Result of a lint check (file path + error)
-- `DrupalLogo` in `internal/ui/drupal_logo.go` — Spinning ASCII Drupal drop logo (6 frames, 1s tick)
+- `DrupalLogo` in `internal/ui/drupal_logo.go` — Static "Drupal Watcher" text in Mathematical Bold Fraktur (Pricedown Bold style)
 - `PowerMode` in `internal/ui/powermode.go` — Combo counter, energy bar, particle system, overheating levels (Normal→Warm→Hot→Power), cooldown smoke, skull of death at 50+ changes
 
 ## Particle types (powermode.go)

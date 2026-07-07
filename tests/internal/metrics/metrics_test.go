@@ -1,35 +1,37 @@
-package metrics
+package metrics_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/irving-frias/drupal-watcher/internal/metrics"
 )
 
 func TestInit(t *testing.T) {
-	Init()
-	snap := Snapshot()
+	metrics.Init()
+	snap := metrics.Snapshot()
 	if snap.TotalChanges != 0 {
 		t.Errorf("expected 0 changes after init, got %d", snap.TotalChanges)
 	}
 }
 
 func TestRecordChange(t *testing.T) {
-	Init()
-	RecordChange()
-	RecordChange()
-	snap := Snapshot()
+	metrics.Init()
+	metrics.RecordChange()
+	metrics.RecordChange()
+	snap := metrics.Snapshot()
 	if snap.TotalChanges != 2 {
 		t.Errorf("expected 2 changes, got %d", snap.TotalChanges)
 	}
 }
 
 func TestRecordClear(t *testing.T) {
-	Init()
-	RecordClear("site1")
-	RecordClear("site2")
-	RecordClear("site1")
-	snap := Snapshot()
+	metrics.Init()
+	metrics.RecordClear("site1")
+	metrics.RecordClear("site2")
+	metrics.RecordClear("site1")
+	snap := metrics.Snapshot()
 	if snap.TotalClears != 3 {
 		t.Errorf("expected 3 clears, got %d", snap.TotalClears)
 	}
@@ -42,20 +44,20 @@ func TestRecordClear(t *testing.T) {
 }
 
 func TestRecordError(t *testing.T) {
-	Init()
-	RecordError()
-	snap := Snapshot()
+	metrics.Init()
+	metrics.RecordError()
+	snap := metrics.Snapshot()
 	if snap.Errors != 1 {
 		t.Errorf("expected 1 error, got %d", snap.Errors)
 	}
 }
 
 func TestSave(t *testing.T) {
-	Init()
-	RecordChange()
-	RecordClear("default")
+	metrics.Init()
+	metrics.RecordChange()
+	metrics.RecordClear("default")
 	path := filepath.Join(t.TempDir(), "stats.json")
-	if err := Save(path); err != nil {
+	if err := metrics.Save(path); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); err != nil {
