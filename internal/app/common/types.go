@@ -1,13 +1,9 @@
 package common
 
-type ServiceName string
+// Typed wrappers to avoid string collision in the DI container.
+// samber/do resolves by concrete type, so WorkDir and DrupalRoot
+// would conflict as plain strings.
 
-const (
-	SvcEventBus     ServiceName = "eventbus"
-	SvcConfig       ServiceName = "config"
-	SvcWorkDir      ServiceName = "workdir"
-	SvcDrupalRoot   ServiceName = "drupal.root"
-	SvcWatcher      ServiceName = "watcher"
-	SvcExecutor     ServiceName = "executor"
-	SvcOrchestrator ServiceName = "orchestrator"
-)
+type WorkDir string
+
+type DrupalRoot string

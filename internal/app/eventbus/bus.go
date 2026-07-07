@@ -30,23 +30,8 @@ func (b *EventBus) Subscribe(topic string, handler func(any)) {
 	b.mu.Unlock()
 }
 
-func (b *EventBus) Unsubscribe(topic string, handler func(any)) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	hs := b.handlers[topic]
-	for i, h := range hs {
-		if &h == &handler {
-			b.handlers[topic] = append(hs[:i], hs[i+1:]...)
-			return
-		}
-	}
-}
-
 const (
-	TopicFileChange   = "file.change"
-	TopicCacheClear   = "cache.clear"
-	TopicError        = "error"
-	TopicConfigUpdate = "config.update"
-	TopicEngineStart  = "engine.start"
-	TopicEngineStop   = "engine.stop"
+	TopicFileChange = "file.change"
+	TopicCacheClear = "cache.clear"
+	TopicError      = "error"
 )

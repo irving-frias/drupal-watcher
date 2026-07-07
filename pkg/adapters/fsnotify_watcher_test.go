@@ -13,7 +13,7 @@ func TestFSNotifyWatcher_Creation(t *testing.T) {
 		t.Skip("skipping on macOS CI due to FSEvents limitations")
 	}
 
-	w, err := adapters.NewFSNotifyWatcher(nil, []string{".git", "node_modules"})
+	w, err := adapters.NewFSNotifyWatcherWithOpts(nil, []string{".git", "node_modules"}, adapters.WatcherOptions{BufferSize: 100})
 	if err != nil {
 		t.Fatalf("failed to create watcher: %v", err)
 	}

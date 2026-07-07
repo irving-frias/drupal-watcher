@@ -139,10 +139,6 @@ While the TUI is running, type commands at the prompt:
 | `help`                        | Show available commands and keybinds      |
 | `star`                        | Open GitHub repo in browser               |
 | `dismiss`                     | Hide the star banner permanently          |
-| `gif`                         | Show GIF background status                |
-| `gif on` / `gif off`          | Enable / disable GIF background           |
-| `gif default`                 | Reset to the embedded default GIF         |
-| `gif <path>`                  | Load and display an animated GIF          |
 | `powermode`                   | Toggle PowerMode visual effects           |
 | `dashboard`                   | Toggle live dashboard panel               |
 | `stop` / `quit` / `exit`      | Stop the watcher                          |
@@ -215,21 +211,6 @@ When 50+ files change in a single batch (e.g. `drush cex`, git checkout, compose
 
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
-## Animated GIF Background
-
-The central events panel supports an animated GIF background. When enabled, the GIF renders behind the event log text using ANSI half-block characters (`▀`) with full 24-bit color, creating a subtle animated backdrop.
-
-```bash
-gif /path/to/animated.gif    # load any GIF89a file
-gif default                  # reset to embedded procedural GIF
-gif on                       # enable background
-gif off                      # disable background
-```
-
-The GIF is decoded in pure Go using `image/gif` — no external dependencies required. Each frame is sampled to a half-block grid matching the terminal size. Rendering is purely computational (no subprocesses), so it works on any terminal that supports 24-bit color (truecolor).
-
-A 30-frame default GIF (dark blue/purple wave pattern) is embedded in the binary as a fallback.
-
 ## Interactive CLI Commands
 
 When running with `--no-tui`, type commands at the prompt:
@@ -301,7 +282,6 @@ Any value can be overridden via environment variables with the `DRUPAL_WATCHER_`
 | `drushCommand`        | Default drush command (default: `cr`)                        |
 | `drushArgs`           | Extra arguments to pass to drush                             |
 | `commandsPerPattern`  | Maps file extensions to specific drush commands              |
-| `postClearCommands`   | Shell commands to run after each cache clear                 |
 | `excludePatterns`     | Path substrings to exclude from watching                     |
 | `Sites`               | Site names to watch in multi-site setups (resolved via `drush/sites.yml`) |
 | `skipLint`            | Disable lint checking before cache clear                     |
@@ -333,7 +313,7 @@ Config via `watchMode` in `configs/config.yaml` (or legacy `watcher.config.json`
    When `phpCsStandard` is set in the config, PHP files are checked with `phpcs` using Drupal coding standards (auto-detects `DrupalStrict` for Drupal 11, `Drupal` for Drupal 10). Requires `drupal/coder` and `squizlabs/php_codesniffer` installed via Composer.
 5. Compatible cache clear commands are merged into a single `drush` call (e.g. `drush cc render,plugin,css-js`)
 6. If any change requires a full rebuild (`cr`), it applies a **lazy rebuild** — a separate 2-second debounce timer accumulates all changes and executes a single `drush cr` at the end of the burst, avoiding redundant full rebuilds
-7. Drush output and post-clear commands are displayed in the TUI or printed to the terminal
+7. Drush output is displayed in the TUI or printed to the terminal
 8. A health file is written to `~/.cache/drupal-watcher/health` every 30s (cleaned up on shutdown)
 9. Metrics (changes, clears, errors per minute) are tracked in-memory for the training mode and `stats` command
 10. `Ctrl+C` (or `SIGTERM`) cancels the context, stops all modules with a 10s timeout, removes PID and health files
@@ -386,17 +366,6 @@ drush twig:debug off  # restores production settings
 ```
 
 Available since Drush 12.1+. Handles `twig.config` settings automatically — no manual cache clears needed.
-
-### Pre-warming caches (Drush 13+)
-
-`drush cache:warm` pre-builds caches so the first request isn't slow after a rebuild.
-This is optional — add it to `postClearCommands` if you want automatic warming:
-
-```json
-"postClearCommands": ["drush cache:warm"]
-```
-
-> **Note:** Warming can be slow on large sites. Not recommended during active development.
 
 ## Multi-site
 
@@ -491,31 +460,23 @@ The codebase uses a **hexagonal (ports & adapters)** architecture:
 
 ```
 cmd/
-  drupal-watcher/        → Binary (module system with DI container + EventBus)
+  drupal-watcher/        → Binary (modular entry point with DI container + EventBus)
 
 internal/
   app/
-    app.go               → App lifecycle (Start/Stop/Done)
-    container.go         → DI container (Set/Get/MustGet)
-    module.go            → Module interface
-    common/types.go      → ServiceName constants
+    app.go               → DI setup (Setup/Shutdown via samber/do/v2)
+    common/types.go      → Typed string wrappers (WorkDir, DrupalRoot)
     eventbus/
       bus.go             → Pub/sub event bus (async, topic-based)
     modules/
-      config/            → Config module (loads watcher.config.json, stores in container)
+      config/            → Config module (loads configs/config.yaml, stores in container)
       watcher/           → Watcher module (creates FSNotifyWatcher from config)
       executor/          → Executor module (creates DrushExecutor from config)
       orchestrator/      → Orchestrator module (engine with EventBus, starts in goroutine)
       ui/                → UI module (runs Bubble Tea TUI, blocks until quit)
         providers/tui/   → TUI bridge (EventBus → EngineEvent channel)
 
-  hooks/
-    builtin/
-      drush_clear.go     → Default post-execution hook
-    examples/
-      slack.go           → Demo: Slack webhook notifier
-  ui/                    → Bubble Tea TUI (model, view, update, styles)
-    gifbg/               → GIF background renderer (decoder, half-block ANSI grid, procedural default GIF)  config/                → Config management (YAML + env vars), Drupal root detection, PID files
+  config/                → Config management (YAML + env vars), Drupal root detection, PID files
   health/                → Liveness check (timestamp file every 30s)
   drush/                 → Drush resolution, execution, health checks
   metrics/               → Runtime statistics (changes, clears, errors per minute)
@@ -526,7 +487,7 @@ internal/
 
 pkg/
   core/
-    interfaces.go        → Watcher, CommandExecutor, EventFilter, PostProcessor
+    interfaces.go        → Watcher, CommandExecutor, EventFilter, LintChecker
     models.go            → FileEvent, ExecutionResult, EngineEvent, SiteInfo
   adapters/
     fsnotify_watcher.go  → core.Watcher via fsnotify
@@ -537,6 +498,7 @@ pkg/
     php_lint.go          → core.LintChecker via php -l
     yaml_lint.go         → core.LintChecker via Go yaml parser
     lint_cache.go        → Caching wrapper for LintChecker (SHA-1, 5min TTL)
+    phpcs_lint.go        → core.LintChecker via phpcs (Drupal standards)
     slog_logger.go       → Structured logger factory
 ```
 
@@ -560,11 +522,6 @@ type EventFilter interface {
     ShouldProcess(event FileEvent) bool
 }
 
-type PostProcessor interface {
-    Name() string
-    Process(ctx context.Context, event FileEvent, result ExecutionResult) error
-}
-
 type LintChecker interface {
     Lint(filePath string) *LintResult
 }
@@ -585,226 +542,9 @@ The orchestrator (`internal/app/modules/orchestrator/engine.go`) runs the centra
 4. **Lint check**: each changed file is checked by its `LintChecker` (`.php` → `php -l`, `.yml` → Go yaml parser). If any file fails, the batch is skipped and an `error` EventBus event is published.
 5. Matching file extensions are resolved to drush commands via `CommandsPerPattern`
 6. `CommandExecutor` runs the resolved commands
-7. All `PostProcessor` implementations run sequentially with the execution result
-8. `EngineEvent` is published to the EventBus on `file.change` and `cache.clear` topics
+7. `EngineEvent` is published to the EventBus on `file.change` and `cache.clear` topics
 
 ---
-
-## Module System (for developers)
-
-### Creating a new module
-
-Implement the `app.Module` interface:
-
-```go
-type Module interface {
-    Name() string
-    DependsOn() []Module
-    Init(container *Container) error
-    Start(ctx context.Context) error
-    Stop(ctx context.Context) error
-}
-```
-
-- **Name**: unique identifier
-- **DependsOn**: list of modules that must init before this one
-- **Init**: resolve dependencies from container, register own services
-- **Start**: start any background goroutines, or block (UI)
-- **Stop**: clean up resources
-
-### Live example: notifications module
-
-```go
-package notifications
-
-import (
-    "context"
-    "fmt"
-
-    "github.com/irving-frias/drupal-watcher/internal/app"
-    "github.com/irving-frias/drupal-watcher/internal/app/common"
-    "github.com/irving-frias/drupal-watcher/internal/app/eventbus"
-)
-
-type Module struct {
-    bus *eventbus.EventBus
-}
-
-func (m *Module) Name() string { return "notifications" }
-
-func (m *Module) DependsOn() []app.Module { return nil }
-
-func (m *Module) Init(container *app.Container) error {
-    m.bus = container.MustGet(common.SvcEventBus).(*eventbus.EventBus)
-
-    // Subscribe to cache clear events
-    m.bus.Subscribe(eventbus.TopicCacheClear, func(event any) {
-        fmt.Printf("Cache cleared: %+v\n", event)
-    })
-
-    return nil
-}
-
-func (m *Module) Start(ctx context.Context) error { return nil }
-func (m *Module) Stop(ctx context.Context) error  { return nil }
-```
-
-### Live example: custom executor
-
-```go
-package custom
-
-import (
-    "context"
-    "github.com/irving-frias/drupal-watcher/internal/app"
-    "github.com/irving-frias/drupal-watcher/internal/app/common"
-    "github.com/irving-frias/drupal-watcher/pkg/core"
-)
-
-type MyExecutor struct{}
-
-func (e *MyExecutor) Execute(ctx context.Context, commands []string, dir string) core.ExecutionResult {
-    return core.ExecutionResult{ExitCode: 0, Stdout: "ok"}
-}
-
-type Module struct{}
-
-func (m *Module) Name() string { return "custom-executor" }
-
-func (m *Module) DependsOn() []app.Module { return nil }
-
-func (m *Module) Init(container *app.Container) error {
-    // Override the default executor
-    container.Set(common.SvcExecutor, &MyExecutor{})
-    return nil
-}
-
-func (m *Module) Start(ctx context.Context) error { return nil }
-func (m *Module) Stop(ctx context.Context) error  { return nil }
-```
-
-### Registering modules in `cmd/modular/main.go`
-
-```go
-package main
-
-import (
-    "context"
-    "fmt"
-    "os"
-
-    "github.com/irving-frias/drupal-watcher/internal/app"
-    cfgmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/config"
-    execmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/executor"
-    orcmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/orchestrator"
-    uimodule "github.com/irving-frias/drupal-watcher/internal/app/modules/ui"
-    watchermodule "github.com/irving-frias/drupal-watcher/internal/app/modules/watcher"
-    "github.com/irving-frias/drupal-watcher/internal/config"
-)
-
-func main() {
-    root := "."
-    if len(os.Args) > 1 {
-        root = os.Args[1]
-    }
-
-    a := app.New(
-        &cfgmodule.Module{WorkDir: root},
-        &watchermodule.Module{},
-        &execmodule.Module{},
-        &orcmodule.Module{},
-        &uimodule.Module{},
-    )
-
-    if err := config.WritePid(root); err != nil {
-        fmt.Fprintf(os.Stderr, "PID: %v\n", err)
-        os.Exit(1)
-    }
-    defer a.Stop(context.Background())
-
-    if err := a.Start(context.Background()); err != nil && err != context.Canceled {
-        fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-        os.Exit(1)
-    }
-}
-```
-
-### Startup order
-
-```
-main()
-├── Create cancellable context (ctx)
-├── go health.Run(ctx)                  → writes ~/.cache/drupal-watcher/health every 30s
-├── app.Start(ctx)
-│   ├── Register EventBus in container
-│   ├── Init modules (dependency-sorted):
-│   │   ├── config     → creates config.Manager, loads configs/config.yaml
-│   │   ├── watcher    → creates FSNotifyWatcher from config
-│   │   ├── executor   → creates DrushExecutor from config
-│   │   ├── orchestrator→ creates Engine with EventBus, watcher, executor
-│   │   └── ui         → gets EventBus + workDir (for star banner persistence)
-│   ├── Start modules (sequential):
-│   │   ├── config     → no-op
-│   │   ├── watcher    → no-op
-│   │   ├── executor   → no-op
-│   │   ├── orchestrator→ starts engine.Run() in a goroutine
-│   │   └── ui         → runs TUI (blocks until user quits or ctx cancelled)
-│   └── Wait for context cancellation or TUI exit
-└── defer app.Stop(ctx)                 → sync.Once, 10s timeout
-    ├── Cancel root context → health check stops + engine stops
-    └── Stop modules in reverse order
-```
-
-### EventBus topics
-
-| Topic | Published by | Event type | Consumers |
-|---|---|---|---|
-| `file.change` | Orchestrator | `core.EngineEvent` | TUI, notifications |
-| `cache.clear` | Orchestrator | `core.EngineEvent` | TUI, notifications |
-| `error` | Orchestrator | `core.EngineEvent` | TUI (lint failures, watcher errors) |
-| `engine.start` | Orchestrator | (empty) | lifecycle hooks |
-| `engine.stop` | Orchestrator | (empty) | lifecycle hooks |
-
-### Extensibility: adding a custom post-processor
-
-The old approach (still works with `cmd/drupal-watcher`):
-
-```go
-type SlackNotifier struct {
-    WebhookURL string
-}
-
-func (s *SlackNotifier) Name() string { return "SlackNotifier" }
-
-func (s *SlackNotifier) Process(ctx context.Context, event core.FileEvent, result core.ExecutionResult) error {
-    // your logic here
-}
-```
-
-Wire it in the module's `Init`:
-
-```go
-func (m *Module) Init(container *app.Container) error {
-    engine := container.MustGet(common.SvcOrchestrator).(*orchestrator.Engine)
-    engine.PostProcessors = append(engine.PostProcessors, &SlackNotifier{...})
-    return nil
-}
-```
-
-### Running the modular binary
-
-```bash
-go run ./cmd/modular                          # current directory
-go run ./cmd/modular /path/to/drupal/project  # with root
-
-# Commands
-go run ./cmd/modular version                  # print version
-go run ./cmd/modular help                     # usage
-
-# Build
-go build -o modular-watcher ./cmd/modular
-./modular-watcher
-```
 
 ## Development (requires Go 1.25+)
 

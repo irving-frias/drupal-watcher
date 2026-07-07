@@ -1,9 +1,6 @@
 package core
 
-import (
-	"context"
-	"log/slog"
-)
+import "context"
 
 type Watcher interface {
 	Start(ctx context.Context) (<-chan FileEvent, <-chan error)
@@ -18,27 +15,6 @@ type CommandExecutor interface {
 
 type EventFilter interface {
 	ShouldProcess(event FileEvent) bool
-}
-
-type PostProcessor interface {
-	Name() string
-	Process(ctx context.Context, event FileEvent, result ExecutionResult) error
-}
-
-type EngineConfig struct {
-	Watcher            Watcher
-	Executor           CommandExecutor
-	SiteExecutorFactory func(site SiteInfo) CommandExecutor
-	Filters            []EventFilter
-	PostProcessors     []PostProcessor
-	EventChan          chan<- EngineEvent
-	Logger             *slog.Logger
-	Debounce           int
-	Patterns           []string
-	ExcludePatterns    []string
-	CommandsPerPattern map[string]string
-	ResolvedSites      []SiteInfo
-	DrupalRoot         string
 }
 
 type SiteInfo struct {

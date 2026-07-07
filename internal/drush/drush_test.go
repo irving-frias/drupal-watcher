@@ -108,23 +108,6 @@ func TestHealthCheck(t *testing.T) {
 	t.Logf("HealthCheck returned %v", ok)
 }
 
-func TestGetSpawnArgs(t *testing.T) {
-	cmd := "/usr/local/bin/drush"
-	cfg := mockDrushConfig{
-		cmd:     &cmd,
-		command: "cc all",
-		args:    []string{"--yes"},
-	}
-
-	base, args := drush.GetSpawnArgs(cfg)
-	if base != "/usr/local/bin/drush" {
-		t.Errorf("expected /usr/local/bin/drush, got %s", base)
-	}
-	if len(args) < 4 {
-		t.Errorf("expected at least 4 args, got %d: %v", len(args), args)
-	}
-}
-
 func TestRunFailsGracefully(t *testing.T) {
 	result := drush.Run("nonexistent-command-12345", []string{})
 	if result.ExitCode == 0 {

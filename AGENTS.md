@@ -39,13 +39,13 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `bin/drupal-watcher` — PHP launcher (`#!/usr/bin/env php`), calls `install.php` then execs Go binary
 - `bin/install.php` — Binary downloader (vendor/bin entry managed by Composer via the `bin` field in `composer.json`)
 - `cmd/drupal-watcher/main.go` — Modular entry point with DI container + module system
-- `internal/app/` — Module system (`Container`, `Module` interface, `App` lifecycle, `EventBus`)
+- `internal/app/` — DI setup (`Setup()`/`Shutdown()` via `samber/do/v2`), typed wrappers (`WorkDir`, `DrupalRoot`), `EventBus`
 - `internal/app/modules/` — Built-in modules (config, watcher, executor, orchestrator, ui)
 - `internal/config/config.go` — `Manager` struct with per-root cache, config load/save, Drupal root detection, PID management
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
-- `internal/app/modules/orchestrator/engine.go` — Engine with EventBus
+- `internal/app/modules/orchestrator/engine.go` — Engine with EventBus, `EngineConfig`, `NewEngine`
 - `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages, powermode)
-- `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `PostProcessor`, `LintChecker`)
+- `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `LintChecker`)
 - `pkg/adapters/` — Adapter implementations (fsnotify, polling_watcher, hybrid_watcher, drush, regex filters, php_lint, yaml_lint, logger)
 
 ## Guidelines
@@ -53,20 +53,20 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - Functions accept optional `root` parameter for testability (defaults to `os.Getwd()`)
 - Caches are per-root via `map[string]*cacheEntry`; use `InvalidateConfigCache(root)` to reset
 - Use `Get*` prefix for interface methods to avoid naming conflict with struct fields
-- New features should use the module system (`internal/app/`) with `app.Module` interface
-- Modules register services in the `Container` via `Init()`; services are identified by `common.ServiceName`
+- New features should register services via `do.ProvideValue` / `do.Provide` in module `Register(i do.Injector)` functions
+- DI uses `samber/do/v2` — type-safe, no reflection, no codegen. `do.Injector` is the container interface
 - EventBus (`internal/app/eventbus/`) decouples modules — new consumers subscribe to topics
 - PID/starttime files stored in `~/.cache/drupal-watcher/.drupal-watcher-<hash>.pid` with `0600` perms (hash based on project absolute path, supports multiple projects)
 - **Releases**: before each release, update `composer.json` → `extra.drupal-watcher-version`. The `build.yml` workflow reads that version, creates the tag, and auto-bumps the patch post-release
 
-## Service names (common.ServiceName)
-- `SvcConfig` — `*config.Config`
-- `SvcWatcher` — `core.Watcher` (FSNotifyWatcher)
-- `SvcExecutor` — `core.CommandExecutor` (DrushExecutor)
-- `SvcOrchestrator` — `*orchestrator.Engine`
-- `SvcEventBus` — `*eventbus.EventBus`
-- `SvcWorkDir` — `string` (project root)
-- `SvcDrupalRoot` — `string` (absolute Drupal root path)
+## DI services (samber/do/v2 types)
+- `*config.Config` — Config struct (provided by config module)
+- `core.Watcher` — FS/Polling/Hybrid watcher (provided by watcher module)
+- `core.CommandExecutor` — Drush executor (provided by executor module)
+- `*orchestrator.Engine` — Engine with EventBus (provided by orchestrator module, implements `Shutdowner`)
+- `*eventbus.EventBus` — Event bus (provided at app setup, before modules)
+- `common.WorkDir` — `string` wrapper (project root)
+- `common.DrupalRoot` — `string` wrapper (absolute Drupal root path)
 
 ## phpcs linting
 - `PhpCsLintChecker` in `pkg/adapters/phpcs_lint.go` — runs `phpcs` with Drupal standards
@@ -79,16 +79,13 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `file.change` — File change detected
 - `cache.clear` — Drush cache clear executed
 - `error` — Watcher or engine error
-- `config.update` — Config reloaded
-- `engine.start` — Orchestrator started
-- `engine.stop` — Orchestrator stopped
 
 ## Key types
 - `config.Config` — Main configuration struct with all watcher settings (includes `SkipLint`, `LintCommands`, `PhpCsStandard`, `WatchMode`, `PollInterval`)
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
 - `drush.DrushResult` — Result of a drush command execution
-- `core.EngineConfig` — Dependency injection struct for the engine (includes `LintCheckers`, `SkipLint`)
+- `orchestrator.EngineConfig` — Dependency injection struct for the engine (includes `LintCheckers`, `SkipLint`)
 - `core.EngineEvent` — Event emitted on file changes / cache clears (includes `Changes int` field for batch size, used by PowerMode skull detection)
 - `core.LintChecker` — Interface for syntax checking before cache clear
 - `core.LintResult` — Result of a lint check (file path + error)

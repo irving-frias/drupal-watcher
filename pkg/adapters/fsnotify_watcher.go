@@ -25,10 +25,6 @@ type FSNotifyWatcher struct {
 	bufSize   int
 }
 
-func NewFSNotifyWatcher(routes, skipDirs []string) (*FSNotifyWatcher, error) {
-	return NewFSNotifyWatcherWithOpts(routes, skipDirs, WatcherOptions{BufferSize: 100})
-}
-
 func NewFSNotifyWatcherWithOpts(routes, skipDirs []string, opts WatcherOptions) (*FSNotifyWatcher, error) {
 	w, err := fsnotify.NewWatcher()
 	if err != nil {

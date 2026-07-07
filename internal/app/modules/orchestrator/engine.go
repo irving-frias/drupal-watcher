@@ -21,10 +21,9 @@ type Engine struct {
 	Executor           core.CommandExecutor
 	SiteExecutorFactory func(site core.SiteInfo) core.CommandExecutor
 	Filters            []core.EventFilter
-	PostProcessors     []core.PostProcessor
-	LintCheckers       map[string]core.LintChecker
-	SkipLint           bool
-	EventBus           *eventbus.EventBus
+	LintCheckers        map[string]core.LintChecker
+	SkipLint            bool
+	EventBus            *eventbus.EventBus
 	Logger             *slog.Logger
 	Debounce           int
 	LazyRebuildMs      int
@@ -52,6 +51,7 @@ type Engine struct {
 	dedupMu     sync.Mutex
 
 	startTime time.Time
+	cancel    context.CancelFunc
 
 	stats struct {
 		changes atomic.Int64
@@ -69,7 +69,6 @@ func NewEngine(cfg EngineConfig) *Engine {
 		Executor:           cfg.Executor,
 		SiteExecutorFactory: cfg.SiteExecutorFactory,
 		Filters:            cfg.Filters,
-		PostProcessors:     cfg.PostProcessors,
 		LintCheckers:       cfg.LintCheckers,
 		SkipLint:           cfg.SkipLint,
 		EventBus:           cfg.EventBus,
@@ -89,12 +88,12 @@ func NewEngine(cfg EngineConfig) *Engine {
 }
 
 func (e *Engine) Run(ctx context.Context) error {
+	ctx, e.cancel = context.WithCancel(ctx)
 	events, errs := e.Watcher.Start(ctx)
 
 	e.Logger.Info("orchestrator started",
 		"debounce_ms", e.Debounce,
 		"filters", len(e.Filters),
-		"post_processors", len(e.PostProcessors),
 	)
 
 	for {
@@ -450,14 +449,13 @@ func (e *Engine) affectedSites(files map[string]struct{}) []core.SiteInfo {
 }
 
 func (e *Engine) runPostProcessors(ctx context.Context, event core.FileEvent, result core.ExecutionResult) {
-	for _, pp := range e.PostProcessors {
-		if err := pp.Process(ctx, event, result); err != nil {
-			e.Logger.Error("post-processor failed",
-				"name", pp.Name(),
-				"error", err,
-			)
-		}
+	if result.ExitCode == 0 {
+		return
 	}
+	e.Logger.Error("cache clear failed",
+		"exit_code", result.ExitCode,
+		"stderr", result.Stderr,
+	)
 }
 
 func (e *Engine) publishDrushResult(result core.ExecutionResult, cmdStr string, changes int, dispFile, siteName string) {
@@ -510,16 +508,18 @@ func resolveCommand(file string, commandsPerPattern map[string]string) []string 
 	return []string{"cr"}
 }
 
-func NewEngineCommandBuilder(commandsPerPattern map[string]string) func(file string) string {
-	return func(file string) string {
-		args := resolveCommand(file, commandsPerPattern)
-		return strings.Join(args, " ")
+// Shutdown cancels the engine's context, stopping all goroutines.
+// Implements do.Shutdowner for graceful DI lifecycle management.
+func (e *Engine) Shutdown() error {
+	if e.cancel != nil {
+		e.cancel()
 	}
+	return nil
 }
 
 func (e *Engine) String() string {
-	return fmt.Sprintf("Engine{debounce=%dms, filters=%d, postProcs=%d}",
-		e.Debounce, len(e.Filters), len(e.PostProcessors))
+	return fmt.Sprintf("Engine{debounce=%dms, filters=%d}",
+		e.Debounce, len(e.Filters))
 }
 
 func DefaultDebounce() int {
@@ -531,7 +531,6 @@ type EngineConfig struct {
 	Executor            core.CommandExecutor
 	SiteExecutorFactory func(site core.SiteInfo) core.CommandExecutor
 	Filters             []core.EventFilter
-	PostProcessors      []core.PostProcessor
 	LintCheckers        map[string]core.LintChecker
 	SkipLint            bool
 	EventBus            *eventbus.EventBus
@@ -544,17 +543,4 @@ type EngineConfig struct {
 	ResolvedSites       []core.SiteInfo
 	DrupalRoot          string
 	Routes              []string
-}
-
-func ValidateEngineConfig(cfg EngineConfig) EngineConfig {
-	if cfg.Debounce <= 0 {
-		cfg.Debounce = DefaultDebounce()
-	}
-	if cfg.LazyRebuildMs <= 0 {
-		cfg.LazyRebuildMs = 2000
-	}
-	if cfg.Logger == nil {
-		cfg.Logger = slog.Default()
-	}
-	return cfg
 }

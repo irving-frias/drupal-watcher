@@ -146,22 +146,3 @@ func FilterSites(all map[string]Site, include, exclude []string) map[string]Site
 
 	return all
 }
-
-func PrintSiteList(sites map[string]Site) string {
-	var names []string
-	for name := range sites {
-		names = append(names, name)
-	}
-	return strings.Join(names, ", ")
-}
-
-// SiteDrushConfig wraps a DrushConfig to inject --uri for a specific site.
-type SiteDrushConfig struct {
-	DrushConfig
-	Name string
-	URI  string
-}
-
-func (c *SiteDrushConfig) GetDrushArgs() []string {
-	return append([]string{"--uri=" + c.URI}, c.DrushConfig.GetDrushArgs()...)
-}

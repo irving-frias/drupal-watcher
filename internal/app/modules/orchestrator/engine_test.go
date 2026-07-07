@@ -64,16 +64,6 @@ func TestResolveCommand_Exact(t *testing.T) {
 	}
 }
 
-func TestNewEngineCommandBuilder(t *testing.T) {
-	builder := NewEngineCommandBuilder(map[string]string{
-		".php": "cc plugin",
-	})
-	cmd := builder("test.php")
-	if cmd != "cc plugin" {
-		t.Errorf("expected 'cc plugin', got %q", cmd)
-	}
-}
-
 func TestShouldProcess(t *testing.T) {
 	e := &Engine{
 		Filters: []core.EventFilter{
@@ -347,18 +337,5 @@ func TestStartTime(t *testing.T) {
 	st := e.StartTime()
 	if st.Before(before) || st.After(after) {
 		t.Error("start time should be between before and after")
-	}
-}
-
-func TestValidateEngineConfig(t *testing.T) {
-	cfg := ValidateEngineConfig(EngineConfig{})
-	if cfg.Debounce != 800 {
-		t.Errorf("expected debounce 800, got %d", cfg.Debounce)
-	}
-	if cfg.LazyRebuildMs != 2000 {
-		t.Errorf("expected lazyRebuildMs 2000, got %d", cfg.LazyRebuildMs)
-	}
-	if cfg.Logger == nil {
-		t.Error("expected non-nil logger after validation")
 	}
 }

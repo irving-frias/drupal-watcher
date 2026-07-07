@@ -5,14 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gen2brain/beeep"
-	"github.com/irving-frias/drupal-watcher/internal/utils"
-	"github.com/pterm/pterm"
 )
 
 
@@ -38,6 +35,10 @@ type DrushConfig interface {
 }
 
 var NotifyFunc = NotifyOS
+
+func init() {
+	beeep.AppName = "Drupal Watcher"
+}
 
 func GetCmd(cfg DrushConfig) string {
 	if d := cfg.GetDrushCmd(); d != nil && *d != "" {
@@ -81,18 +82,6 @@ func ResetCmdCache() {
 	cmdMu.Lock()
 	defer cmdMu.Unlock()
 	cachedCmd = ""
-}
-
-func GetSpawnArgs(cfg DrushConfig) (string, []string) {
-	cmd := GetCmd(cfg)
-	drushCommand := cfg.GetDrushCommand()
-	drushArgs := cfg.GetDrushArgs()
-	args := []string{cmd}
-	if drushCommand != "" {
-		args = append(args, strings.Fields(drushCommand)...)
-	}
-	args = append(args, drushArgs...)
-	return cmd, args
 }
 
 func HealthCheck(cfg DrushConfig) bool {
@@ -187,33 +176,6 @@ func RunCacheClears(cfg DrushConfig, commands []string) DrushResult {
 	return result
 }
 
-func RunPostClearCommands(commands []string) {
-	for _, cmdStr := range commands {
-		if cmdStr == "" {
-			continue
-		}
-		pterm.Info.Printfln("Running post-clear command: %s", utils.Dim(cmdStr))
-
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", cmdStr)
-		} else {
-			cmd = exec.Command("sh", "-c", cmdStr)
-		}
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-
-		if err := cmd.Run(); err != nil {
-			pterm.Warning.Printfln("Post-clear command failed: %v", err)
-		}
-	}
-}
-
 func NotifyOS(title, message string) {
 	beeep.Notify(title, message, "")
-}
-
-func PromptConfirm(prompt string) bool {
-	result, _ := pterm.DefaultInteractiveConfirm.WithDefaultValue(false).WithDefaultText(prompt).Show()
-	return result
 }

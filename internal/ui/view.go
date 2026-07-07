@@ -8,7 +8,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/irving-frias/drupal-watcher/internal/ui/gifbg"
 )
 
 func sparkline(vals []float64, max int) string {
@@ -191,8 +190,6 @@ func (m *Model) renderHelp() string {
 	b.WriteString(fmt.Sprintf("\n  %s       Stop the watcher and exit", green.Render("stop")))
 	b.WriteString(fmt.Sprintf("\n  %s         Open GitHub star page", green.Render("star")))
 	b.WriteString(fmt.Sprintf("\n  %s      Permanently dismiss star banner", green.Render("dismiss")))
-	b.WriteString(fmt.Sprintf("\n  %s           GIF background on/off/default/load", green.Render("gif")))
-	b.WriteString("\n")
 	b.WriteString("\n" + dim.Render("  Keys"))
 	b.WriteString("\n" + dim.Render("  ───────────────────────────────────"))
 	b.WriteString(fmt.Sprintf("\n  %s    Quit", dim.Render("ctrl+c / ctrl+d")))
@@ -211,42 +208,6 @@ func (m *Model) renderHelp() string {
 	b.WriteString(fmt.Sprintf("\n  %s Ctrl+X   Disable Xdebug if detected", dim.Render("ctrl+x")))
 	b.WriteString("\n\n" + dim.Render("  Press ? or Esc to close help"))
 	return b.String()
-}
-
-func (m *Model) renderEventsWithGIF(content string, vpWidth, vpHeight int) string {
-	grid := m.gif.FrameRows(vpWidth, vpHeight)
-	if len(grid) == 0 {
-		return eventsStyle.Render(content)
-	}
-
-	lines := strings.Split(content, "\n")
-	var out strings.Builder
-	for i, line := range lines {
-		if i < len(grid) {
-			bgColor := m.gif.RowBGColor(i)
-			bgSeq := gifbg.BGSequence(bgColor)
-
-			cleaned := strings.ReplaceAll(line, "\x1b[0m", "\x1b[39m"+bgSeq)
-			out.WriteString(bgSeq)
-			out.WriteString(cleaned)
-			out.WriteString("\x1b[0m")
-		} else {
-			out.WriteString(line)
-		}
-		if i < len(lines)-1 {
-			out.WriteString("\n")
-		}
-	}
-
-	// Pad remaining rows with GIF grid
-	for i := len(lines); i < len(grid); i++ {
-		if out.Len() > 0 {
-			out.WriteString("\n")
-		}
-		out.WriteString(grid[i])
-	}
-
-	return eventsStyle.Render(out.String())
 }
 
 func (m *Model) View() string {
@@ -274,13 +235,7 @@ func (m *Model) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, status, panel)
 	}
 
-	events := m.viewport.View()
-
-	if m.gif.Enabled() {
-		events = m.renderEventsWithGIF(events, m.viewport.Width, m.viewport.Height)
-	} else {
-		events = eventsStyle.Render(events)
-	}
+	events := eventsStyle.Render(m.viewport.View())
 
 	input := cmdStyle.Render(m.renderInput())
 

@@ -8,11 +8,11 @@ import (
 	"strings"
 
 	"github.com/irving-frias/drupal-watcher/internal/app"
-	cfgmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/config"
-	execmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/executor"
-	orcmodule "github.com/irving-frias/drupal-watcher/internal/app/modules/orchestrator"
-	uimodule "github.com/irving-frias/drupal-watcher/internal/app/modules/ui"
-	watchermodule "github.com/irving-frias/drupal-watcher/internal/app/modules/watcher"
+	cfgmod "github.com/irving-frias/drupal-watcher/internal/app/modules/config"
+	execmod "github.com/irving-frias/drupal-watcher/internal/app/modules/executor"
+	orcmod "github.com/irving-frias/drupal-watcher/internal/app/modules/orchestrator"
+	uimod "github.com/irving-frias/drupal-watcher/internal/app/modules/ui"
+	watchermod "github.com/irving-frias/drupal-watcher/internal/app/modules/watcher"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/health"
@@ -50,16 +50,20 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	cfgMod := &cfgmodule.Module{WorkDir: root}
-	watchMod := &watchermodule.Module{}
-	execMod := &execmodule.Module{}
-	orcMod := &orcmodule.Module{}
-	uiMod := &uimodule.Module{}
-
-	a := app.New(cfgMod, watchMod, execMod, orcMod, uiMod)
+	i, err := app.Setup(
+		cfgmod.Register(root),
+		watchermod.Register,
+		execmod.Register,
+		orcmod.Register,
+		uimod.Register,
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Init: %v\n", err)
+		os.Exit(1)
+	}
 
 	defer func() {
-		a.Stop(ctx)
+		app.Shutdown(i, context.Background())
 		config.RemovePid(root)
 	}()
 
@@ -70,7 +74,16 @@ func main() {
 
 	go health.Run(ctx)
 
-	if err := a.Start(ctx); err != nil && err != context.Canceled {
+	// Start engine in background.
+	go func() {
+		if err := orcmod.Run(i, ctx); err != nil && err != context.Canceled {
+			pterm.Error.Printfln("Engine: %v", err)
+		}
+		cancel()
+	}()
+
+	// Start TUI (blocks until quit).
+	if err := uimod.Run(ctx, i); err != nil && err != context.Canceled {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}

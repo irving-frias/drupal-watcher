@@ -17,5 +17,3 @@ type fsCompleteMsg struct {
 }
 
 type powerPulseMsg struct{}
-
-type gifFrameMsg struct{}

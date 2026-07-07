@@ -14,7 +14,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/irving-frias/drupal-watcher/internal/training"
-	"github.com/irving-frias/drupal-watcher/internal/ui/gifbg"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/xdebug"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
@@ -117,11 +116,10 @@ type Model struct {
 	trainingSuggestion *training.Suggestion
 	trainingInitOnce   sync.Once
 
-	gif      *gifbg.Background
 	powerMode *PowerMode
 }
 
-func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string, gifPath string) *Model {
+func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "type help to see commands"
 	ti.Focus()
@@ -161,7 +159,6 @@ func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string, g
 			Description: "Training data loading",
 		},
 		powerMode: NewPowerMode(),
-		gif:       gifbg.New(gifPath),
 	}
 }
 
@@ -173,9 +170,6 @@ func (m *Model) Init() tea.Cmd {
 		tickCmd(),
 		listenForEvents(m.eventChan),
 		textinput.Blink,
-	}
-	if m.gif.Active() {
-		cmds = append(cmds, m.gifTickCmd())
 	}
 	return tea.Batch(cmds...)
 }
@@ -221,17 +215,7 @@ func (m *Model) addToHistory(cmd string) {
 	}
 }
 
-func (m *Model) gifTickCmd() tea.Cmd {
-	if !m.gif.Enabled() {
-		return nil
-	}
-	d := m.gif.FrameDuration(m.gif.FrameIndex())
-	return tea.Tick(time.Duration(d)*time.Millisecond, func(t time.Time) tea.Msg {
-		return gifFrameMsg{}
-	})
-}
-
-var commands = []string{"status", "stats", "filter", "star", "dismiss", "help", "stop", "quit", "exit", "powermode", "gif"}
+var commands = []string{"status", "stats", "filter", "star", "dismiss", "help", "stop", "quit", "exit", "powermode"}
 
 func (m *Model) updateStatus() {
 	uptime := time.Since(m.engineInfo.StartTime())

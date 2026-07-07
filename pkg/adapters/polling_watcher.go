@@ -29,10 +29,6 @@ type PollingWatcher struct {
 	snapshot   dirSnapshot
 }
 
-func NewPollingWatcher(routes, skipDirs []string, interval time.Duration) *PollingWatcher {
-	return NewPollingWatcherWithOpts(routes, skipDirs, interval, WatcherOptions{BufferSize: 100})
-}
-
 func NewPollingWatcherWithOpts(routes, skipDirs []string, interval time.Duration, opts WatcherOptions) *PollingWatcher {
 	skipSet := make(map[string]bool, len(skipDirs))
 	for _, s := range skipDirs {
@@ -195,7 +191,7 @@ func diffSnapshots(prev, curr dirSnapshot) []core.FileEvent {
 		return nil
 	}
 
-	events := make([]core.FileEvent, 0, maxInt(len(curr), len(prev)))
+	events := make([]core.FileEvent, 0, max(len(curr), len(prev)))
 
 	for path, cur := range curr {
 		prevEntry, existed := prev[path]
@@ -219,11 +215,4 @@ func diffSnapshots(prev, curr dirSnapshot) []core.FileEvent {
 	}
 
 	return events
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

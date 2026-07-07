@@ -3,38 +3,26 @@ package orchestrator
 import (
 	"context"
 	"os"
+	"strings"
 
-	"github.com/irving-frias/drupal-watcher/internal/app"
 	"github.com/irving-frias/drupal-watcher/internal/app/common"
 	"github.com/irving-frias/drupal-watcher/internal/app/eventbus"
 	"github.com/irving-frias/drupal-watcher/internal/config"
-	"github.com/irving-frias/drupal-watcher/internal/hooks/builtin"
 	"github.com/irving-frias/drupal-watcher/internal/metrics"
 	"github.com/irving-frias/drupal-watcher/pkg/adapters"
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 	"github.com/pterm/pterm"
+	"github.com/samber/do/v2"
 )
 
-func init() {
-	metrics.Init()
-}
-
-type Module struct {
-	engine *Engine
-}
-
-var _ app.Module = (*Module)(nil)
-
-func (m *Module) Name() string { return "orchestrator" }
-
-func (m *Module) DependsOn() []app.Module { return nil }
-
-func (m *Module) Init(container *app.Container) error {
-	cfg := container.MustGet(common.SvcConfig).(*config.Config)
-	watcher := container.MustGet(common.SvcWatcher).(core.Watcher)
-	exec := container.MustGet(common.SvcExecutor).(core.CommandExecutor)
-	bus := container.MustGet(common.SvcEventBus).(*eventbus.EventBus)
-	dr := container.MustGet(common.SvcDrupalRoot).(string)
+// Register provides *Engine to the injector.
+// Engine implements Shutdowner for graceful stop.
+func Register(i do.Injector) error {
+	cfg := do.MustInvoke[*config.Config](i)
+	watcher := do.MustInvoke[core.Watcher](i)
+	exec := do.MustInvoke[core.CommandExecutor](i)
+	bus := do.MustInvoke[*eventbus.EventBus](i)
+	dr := do.MustInvoke[common.DrupalRoot](i)
 
 	filters := []core.EventFilter{
 		adapters.NewPatternFilter(cfg.Patterns),
@@ -45,11 +33,10 @@ func (m *Module) Init(container *app.Container) error {
 	lintCheckers := buildLintCheckers(cfg)
 	lintCheckers = wrapWithCache(lintCheckers)
 
-	m.engine = NewEngine(EngineConfig{
+	engine := NewEngine(EngineConfig{
 		Watcher:            watcher,
 		Executor:           exec,
 		Filters:            filters,
-		PostProcessors:     []core.PostProcessor{&builtin.DrushClear{}},
 		LintCheckers:       lintCheckers,
 		SkipLint:           cfg.SkipLint,
 		EventBus:           bus,
@@ -59,28 +46,32 @@ func (m *Module) Init(container *app.Container) error {
 		ExcludePatterns:    cfg.ExcludePatterns,
 		CommandsPerPattern: cfg.CommandsPerPattern,
 		ResolvedSites:      cfg.GetResolvedSites(),
-		DrupalRoot:         dr,
+		DrupalRoot:         string(dr),
 		Routes:             cfg.Routes,
 	})
 
-	container.Set(common.SvcOrchestrator, m.engine)
-
-	pterm.Info.Printfln("Routes: %s", pterm.Cyan(stringJoin(cfg.Routes, ", ")))
-	pterm.Info.Printfln("Patterns: %s", pterm.Cyan(stringJoin(cfg.Patterns, ", ")))
+	pterm.Info.Printfln("Routes: %s", pterm.Cyan(strings.Join(cfg.Routes, ", ")))
+	pterm.Info.Printfln("Patterns: %s", pterm.Cyan(strings.Join(cfg.Patterns, ", ")))
 	pterm.Success.Printfln("Modular watcher PID %d.", os.Getpid())
+
+	do.ProvideValue(i, engine)
 	return nil
 }
 
-func (m *Module) Start(ctx context.Context) error {
+// Run starts the engine in a goroutine and blocks until ctx is done.
+// Call this after all services are resolved.
+func Run(i do.Injector, ctx context.Context) error {
+	engine := do.MustInvoke[*Engine](i)
+	metrics.Init()
+
 	go func() {
-		if err := m.engine.Run(ctx); err != nil && err != context.Canceled {
+		if err := engine.Run(ctx); err != nil && err != context.Canceled {
 			pterm.Error.Printfln("Engine: %v", err)
 		}
 	}()
-	return nil
+	<-ctx.Done()
+	return ctx.Err()
 }
-
-func (m *Module) Stop(ctx context.Context) error { return nil }
 
 func buildLintCheckers(cfg *config.Config) map[string]core.LintChecker {
 	if cfg.SkipLint {
@@ -138,15 +129,4 @@ func wrapWithCache(checkers map[string]core.LintChecker) map[string]core.LintChe
 		wrapped[ext] = adapters.NewCachingLintChecker(chk)
 	}
 	return wrapped
-}
-
-func stringJoin(elems []string, sep string) string {
-	if len(elems) == 0 {
-		return ""
-	}
-	result := elems[0]
-	for _, e := range elems[1:] {
-		result += sep + e
-	}
-	return result
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/irving-frias/drupal-watcher/pkg/core"
 )
 
-func Run(eventChan <-chan core.EngineEvent, info EngineInfo, root string, gifPath string) error {
-	m := NewModel(eventChan, info, root, gifPath)
+func Run(eventChan <-chan core.EngineEvent, info EngineInfo, root string) error {
+	m := NewModel(eventChan, info, root)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		return err
@@ -16,8 +16,8 @@ func Run(eventChan <-chan core.EngineEvent, info EngineInfo, root string, gifPat
 	return nil
 }
 
-func RunContext(ctx context.Context, eventChan <-chan core.EngineEvent, info EngineInfo, root string, gifPath string) error {
-	m := NewModel(eventChan, info, root, gifPath)
+func RunContext(ctx context.Context, eventChan <-chan core.EngineEvent, info EngineInfo, root string) error {
+	m := NewModel(eventChan, info, root)
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	go func() {
