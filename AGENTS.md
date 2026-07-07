@@ -44,7 +44,7 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `internal/config/config.go` — `Manager` struct with per-root cache, config load/save, Drupal root detection, PID management
 - `internal/drush/drush.go` — Drush command resolution and execution, `DrushConfig` interface
 - `internal/app/modules/orchestrator/engine.go` — Engine with EventBus, `EngineConfig`, `NewEngine`
-- `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages, powermode)
+- `internal/ui/` — Bubble Tea TUI (model, view, update, styles, messages, powermode, drupal_logo)
 - `pkg/core/` — Domain interfaces (`Watcher`, `CommandExecutor`, `EventFilter`, `LintChecker`)
 - `pkg/adapters/` — Adapter implementations (fsnotify, polling_watcher, hybrid_watcher, drush, regex filters, php_lint, yaml_lint, logger)
 
@@ -81,7 +81,7 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `error` — Watcher or engine error
 
 ## Key types
-- `config.Config` — Main configuration struct with all watcher settings (includes `SkipLint`, `LintCommands`, `PhpCsStandard`, `WatchMode`, `PollInterval`)
+- `config.Config` — Main configuration struct with all watcher settings (includes `SkipLint`, `LintCommands`, `PhpCsStandard`, `WatchMode`, `PollInterval`, `ShowLogo`)
 - `config.Manager` — Config cache and file operations
 - `drush.DrushConfig` — Interface for drush operations (satisfied by config.Config)
 - `drush.DrushResult` — Result of a drush command execution
@@ -89,6 +89,7 @@ ALWAYS prefer MCP graph tools over grep/glob/file-search for code discovery.
 - `core.EngineEvent` — Event emitted on file changes / cache clears (includes `Changes int` field for batch size, used by PowerMode skull detection)
 - `core.LintChecker` — Interface for syntax checking before cache clear
 - `core.LintResult` — Result of a lint check (file path + error)
+- `DrupalLogo` in `internal/ui/drupal_logo.go` — Spinning ASCII Drupal drop logo (6 frames, 1s tick)
 - `PowerMode` in `internal/ui/powermode.go` — Combo counter, energy bar, particle system, overheating levels (Normal→Warm→Hot→Power), cooldown smoke, skull of death at 50+ changes
 
 ## Particle types (powermode.go)

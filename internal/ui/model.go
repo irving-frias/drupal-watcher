@@ -117,9 +117,13 @@ type Model struct {
 	trainingInitOnce   sync.Once
 
 	powerMode *PowerMode
+
+	logo     *DrupalLogo
+	showLogo bool
+	logoW    int // logo panel outer width (0 when hidden)
 }
 
-func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *Model {
+func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string, showLogo bool) *Model {
 	ti := textinput.New()
 	ti.Placeholder = "type help to see commands"
 	ti.Focus()
@@ -159,6 +163,8 @@ func NewModel(eventChan <-chan core.EngineEvent, info EngineInfo, root string) *
 			Description: "Training data loading",
 		},
 		powerMode: NewPowerMode(),
+		logo:      NewDrupalLogo(),
+		showLogo:  showLogo,
 	}
 }
 

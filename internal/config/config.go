@@ -38,6 +38,7 @@ type Config struct {
 	WatchMode           string            `json:"watchMode,omitempty" mapstructure:"watchMode"`
 	PollInterval        int               `json:"pollInterval,omitempty" mapstructure:"pollInterval"`
 	EventBufferSize     int               `json:"eventBufferSize,omitempty" mapstructure:"eventBufferSize"`
+	ShowLogo            bool              `json:"showLogo,omitempty" mapstructure:"showLogo"`
 	resolvedSites       []core.SiteInfo
 }
 
@@ -59,6 +60,7 @@ func (c Config) GetWatchMode() string                    { return c.WatchMode }
 func (c Config) GetPollInterval() int                    { return c.PollInterval }
 func (c Config) GetEventBufferSize() int                 { return c.EventBufferSize }
 func (c Config) GetPhpCsStandard() string                { return c.PhpCsStandard }
+func (c Config) GetShowLogo() bool                       { return c.ShowLogo }
 
 func (c *Config) SetResolvedSites(sites []core.SiteInfo) { c.resolvedSites = sites }
 
@@ -216,6 +218,7 @@ func (m *Manager) GetDefaultConfig(root string) Config {
 		},
 		PollInterval:    2000,
 		EventBufferSize: 500,
+		ShowLogo:        true,
 	}
 }
 
@@ -231,6 +234,7 @@ func bindEnv(v *viper.Viper) {
 		"watchMode":       "DRUPAL_WATCHER_WATCH_MODE",
 		"pollInterval":    "DRUPAL_WATCHER_POLL_INTERVAL",
 		"eventBufferSize": "DRUPAL_WATCHER_EVENT_BUFFER_SIZE",
+		"showLogo":         "DRUPAL_WATCHER_SHOW_LOGO",
 	}
 	for key, env := range envKeys {
 		v.BindEnv(key, env)
@@ -463,6 +467,7 @@ func (m *Manager) saveYamlConfig(cfg Config, root string) error {
 	v.Set("watchMode", cfg.WatchMode)
 	v.Set("pollInterval", cfg.PollInterval)
 	v.Set("eventBufferSize", cfg.EventBufferSize)
+	v.Set("showLogo", cfg.ShowLogo)
 	if err := v.WriteConfigAs(yp); err != nil {
 		return err
 	}
@@ -472,6 +477,20 @@ func (m *Manager) saveYamlConfig(cfg Config, root string) error {
 func (m *Manager) InvalidateConfigCache(root string) {
 	r := getRoot(root)
 	delete(m.cache, r)
+}
+
+// SaveLogoPreference persists the showLogo toggle to the config file.
+func SaveLogoPreference(root string, show bool) error {
+	r := getRoot(root)
+	m := &Manager{}
+	yp := m.yamlConfigPath(r)
+	v := viper.New()
+	v.SetConfigFile(yp)
+	if err := v.ReadInConfig(); err != nil {
+		return err
+	}
+	v.Set("showLogo", show)
+	return v.WriteConfigAs(yp)
 }
 
 // --- PID file ---

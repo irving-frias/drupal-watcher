@@ -140,6 +140,7 @@ While the TUI is running, type commands at the prompt:
 | `star`                        | Open GitHub repo in browser               |
 | `dismiss`                     | Hide the star banner permanently          |
 | `powermode`                   | Toggle PowerMode visual effects           |
+| `logo`                        | Toggle Drupal logo side panel             |
 | `dashboard`                   | Toggle live dashboard panel               |
 | `stop` / `quit` / `exit`      | Stop the watcher                          |
 
@@ -211,6 +212,18 @@ When 50+ files change in a single batch (e.g. `drush cex`, git checkout, compose
 
 Toggle PowerMode on/off at any time with `F4` or the `powermode` command.
 
+## Drupal Logo — Side Panel
+
+An animated ASCII Drupal drop logo rotates in a side panel on the right of the events viewport. The logo cycles through6 frames at 1 frame per second (6-second full rotation).
+
+The side panel appears when `showLogo` is enabled (default: `true`). On narrow terminals (< 60 cols), the logo auto-hides to preserve readability.
+
+```bash
+logo    # toggle the side panel on/off
+```
+
+The preference is persisted to `configs/config.yaml` and survives restarts. Override with `DRUPAL_WATCHER_SHOW_LOGO=false`.
+
 ## Interactive CLI Commands
 
 When running with `--no-tui`, type commands at the prompt:
@@ -271,6 +284,7 @@ Any value can be overridden via environment variables with the `DRUPAL_WATCHER_`
 | `DRUPAL_WATCHER_DRUSH_COMMAND` | `drushCommand` | `DRUPAL_WATCHER_DRUSH_COMMAND=cc all` |
 | `DRUPAL_WATCHER_SKIP_LINT` | `skipLint` | `DRUPAL_WATCHER_SKIP_LINT=true` |
 | `DRUPAL_WATCHER_WATCH_MODE` | `watchMode` | `DRUPAL_WATCHER_WATCH_MODE=poll` |
+| `DRUPAL_WATCHER_SHOW_LOGO` | `showLogo` | `DRUPAL_WATCHER_SHOW_LOGO=false` |
 | `DRUPAL_WATCHER_POLL_INTERVAL` | `pollInterval` | `DRUPAL_WATCHER_POLL_INTERVAL=1000` |
 
 | Field                 | Description                                                  |
@@ -289,6 +303,7 @@ Any value can be overridden via environment variables with the `DRUPAL_WATCHER_`
 | `phpCsStandard`       | PHPCS standard for PHP linting, e.g. `"auto"`, `"Drupal"`, `"DrupalStrict"`. When set, replaces `php -l` with `phpcs` using Drupal coding standards. `"auto"` detects Drupal 11 → `DrupalStrict`, else `Drupal`. Empty string (default) keeps `php -l`. |
 | `watchMode`           | File watching mode: `auto`, `fsnotify`, `poll`, `hybrid`     |
 | `pollInterval`        | Polling interval in ms (default 2000, only used in poll/hybrid modes) |
+| `showLogo`            | Show animated Drupal logo in side panel (default: `true`). Toggle with `logo` command. |
 
 **commandsPerPattern** maps file extensions to drush commands. The most specific match wins (e.g., `.info.yml` matches before `.yml`). Falls back to `cr` if no pattern matches.
 

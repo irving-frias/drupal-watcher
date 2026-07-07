@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/training"
 	"github.com/irving-frias/drupal-watcher/internal/utils"
 	"github.com/irving-frias/drupal-watcher/internal/xdebug"
@@ -21,13 +22,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		cw := msg.Width - 2
+		cw := msg.Width - 2 // content width (terminal minus border chars)
 		statusStyle = statusStyle.Width(cw)
-		eventsStyle = eventsStyle.Width(cw)
 		cmdStyle = cmdStyle.Width(cw)
 		helpStyle = helpStyle.Width(cw - 4)
 
-		vpHeight := msg.Height - 9
+		vpHeight := msg.Height - 9 // status(4) + events_border(2) + input(3)
 		if m.showStar {
 			vpHeight -= 3
 		}
@@ -37,9 +37,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if vpHeight < 5 {
 			vpHeight = 5
 		}
-		m.viewport.Width = cw - 4
+
+		// Calculate logo panel width
+		if m.showLogo && cw > logoPanelWidth+8 {
+			m.logoW = logoPanelWidth
+		} else {
+			m.logoW = 0
+		}
+
+		// Set events panel width and viewport dimensions
+		eventsW := cw - m.logoW
+		eventsStyle.Width(eventsW)
+		m.viewport.Width = eventsW - 4 // minus border(2) + padding(2)
 		m.viewport.Height = vpHeight
 		m.input.Width = cw - 6
+
+		if m.logoW > 0 {
+			logoStyle.Width(m.logoW)
+		}
 
 		return m, nil
 
@@ -262,6 +277,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		m.updateStatus()
 		m.powerMode.Tick()
+		m.logo.Tick()
 		m.viewport.SetContent(m.renderEvents())
 		if m.autoScroll {
 			m.viewport.GotoBottom()
@@ -518,6 +534,32 @@ func (m *Model) executeCommand(cmd string) tea.Cmd {
 		m.pushEvent(eventLine{
 			Timestamp: time.Now().Format("15:04:05"),
 			Content:   "Star banner dismissed permanently. Type " + cyan.Render("star") + " to reopen.",
+			Style:     infoStyle,
+		})
+
+	case "logo":
+		m.showLogo = !m.showLogo
+		// Recalculate layout dimensions
+		cw := m.width - 2
+		if m.showLogo && cw > logoPanelWidth+8 {
+			m.logoW = logoPanelWidth
+		} else {
+			m.logoW = 0
+		}
+		eventsW := cw - m.logoW
+		eventsStyle.Width(eventsW)
+		m.viewport.Width = eventsW - 4
+		if m.logoW > 0 {
+			logoStyle.Width(m.logoW)
+		}
+		status := "disabled"
+		if m.showLogo {
+			status = "enabled"
+		}
+		config.SaveLogoPreference(m.root, m.showLogo)
+		m.pushEvent(eventLine{
+			Timestamp: time.Now().Format("15:04:05"),
+			Content:   "Drupal logo " + status,
 			Style:     infoStyle,
 		})
 

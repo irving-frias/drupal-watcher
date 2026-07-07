@@ -190,6 +190,7 @@ func (m *Model) renderHelp() string {
 	b.WriteString(fmt.Sprintf("\n  %s       Stop the watcher and exit", green.Render("stop")))
 	b.WriteString(fmt.Sprintf("\n  %s         Open GitHub star page", green.Render("star")))
 	b.WriteString(fmt.Sprintf("\n  %s      Permanently dismiss star banner", green.Render("dismiss")))
+	b.WriteString(fmt.Sprintf("\n  %s       Toggle Drupal logo side panel", green.Render("logo")))
 	b.WriteString("\n" + dim.Render("  Keys"))
 	b.WriteString("\n" + dim.Render("  ───────────────────────────────────"))
 	b.WriteString(fmt.Sprintf("\n  %s    Quit", dim.Render("ctrl+c / ctrl+d")))
@@ -216,12 +217,15 @@ func (m *Model) View() string {
 		statusStyle = statusStyle.BorderForeground(borderColor)
 		if m.powerMode.PulseFrames()%2 == 0 {
 			eventsStyle = eventsStyle.BorderForeground(borderColor)
+			logoStyle = logoStyle.BorderForeground(borderColor)
 		} else {
 			eventsStyle = eventsStyle.BorderForeground(lipgloss.Color("33"))
+			logoStyle = logoStyle.BorderForeground(lipgloss.Color("33"))
 		}
 	} else {
 		statusStyle = statusStyle.BorderForeground(lipgloss.Color("62"))
 		eventsStyle = eventsStyle.BorderForeground(lipgloss.Color("33"))
+		logoStyle = logoStyle.BorderForeground(lipgloss.Color("39"))
 	}
 	status := statusStyle.Render(m.renderStatus())
 
@@ -235,11 +239,20 @@ func (m *Model) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, status, panel)
 	}
 
-	events := eventsStyle.Render(m.viewport.View())
+	eventsContent := m.viewport.View()
+	var middle string
+	if m.showLogo && m.logoW > 0 {
+		logoContentH := m.viewport.Height
+		logoPanel := logoStyle.Render(m.logo.Render(m.logoW-4, logoContentH))
+		eventsBox := eventsStyle.Render(eventsContent)
+		middle = lipgloss.JoinHorizontal(lipgloss.Top, eventsBox, logoPanel)
+	} else {
+		middle = eventsStyle.Render(eventsContent)
+	}
 
 	input := cmdStyle.Render(m.renderInput())
 
-	parts := []string{status, events}
+	parts := []string{status, middle}
 	if m.showStar {
 		parts = append(parts, starStyle.Render(m.renderStarBanner()))
 	}

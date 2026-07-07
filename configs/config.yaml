@@ -1,53 +1,54 @@
-routes:
-  - docroot/modules/custom
-  - docroot/themes/custom
-patterns:
-  - .php
-  - .module
-  - .inc
-  - .theme
-  - .info.yml
-  - .services.yml
-  - .routing.yml
-  - .yml
-  - .yaml
-  - .twig
-  - .html.twig
-  - .css
-  - .js
-excludePatterns: []
+commandsperpattern:
+    .css: cc css-js
+    .html.twig: cc render
+    .inc: cc plugin
+    .info.yml: cr
+    .js: cc css-js
+    .links.menu.yml: cr
+    .module: cc plugin
+    .permissions.yml: cr
+    .php: cc plugin
+    .routing.yml: cr
+    .services.yml: cr
+    .theme: cc theme-registry
+    .twig: cc render
+    .yml: cc plugin
 debounce: 800
-drushCmd: null
-drushCommand: cr
-drushArgs:
-  - --quiet
-  - --no-ansi
-postClearCommands: []
-commandsPerPattern:
-  .html.twig: cc render
-  .twig: cc render
-  .theme: cc theme-registry
-  .module: cc plugin
-  .inc: cc plugin
-  .php: cc plugin
-  .yml: cc plugin
-  .info.yml: cr
-  .services.yml: cr
-  .routing.yml: cr
-  .permissions.yml: cr
-  .links.menu.yml: cr
-  .css: cc css-js
-  .js: cc css-js
-drupalRoot: docroot
+drupalroot: docroot
+drushargs:
+    - --quiet
+    - --no-ansi
+drushcmd: null
+drushcommand: cr
+eventbuffersize: 500
+excludepatterns: []
+lintcommands:
+    .php: php -l
+    .yaml: yaml
+    .yml: yaml
 notify: false
+patterns:
+    - .html.twig
+    - .twig
+    - .inc
+    - .yml
+    - .module
+    - .theme
+    - .php
+    - .info.yml
+    - .services.yml
+    - .routing.yml
+    - .permissions.yml
+    - .links.menu.yml
+    - .css
+    - .js
+phpcsstandard: ""
+pollinterval: 2000
+postclearcommands: []
+routes:
+    - docroot/modules/custom
+    - docroot/themes/custom
+showlogo: true
 sites: []
-skipLint: false
-lintCommands:
-  .php: php -l
-  .yml: yaml automatic
-  .yaml: yaml automatic
-phpCsStandard: ""
-gifBackground: ""
-watchMode: auto
-pollInterval: 2000
-eventBufferSize: 500
+skiplint: false
+watchmode: ""

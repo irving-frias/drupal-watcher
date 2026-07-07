@@ -33,6 +33,11 @@ var (
 			BorderForeground(lipgloss.Color("64")).
 			Padding(0, 1)
 
+	logoStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("39")).
+			Padding(0, 1)
+
 	helpStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("62")).
