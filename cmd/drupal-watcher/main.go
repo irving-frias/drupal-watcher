@@ -8,12 +8,9 @@ import (
 	"strings"
 
 	"github.com/irving-frias/drupal-watcher/internal/app"
-	cfgmod "github.com/irving-frias/drupal-watcher/internal/app/modules/config"
-	execmod "github.com/irving-frias/drupal-watcher/internal/app/modules/executor"
 	orcmod "github.com/irving-frias/drupal-watcher/internal/app/modules/orchestrator"
 	uimod "github.com/irving-frias/drupal-watcher/internal/app/modules/ui"
-	watchermod "github.com/irving-frias/drupal-watcher/internal/app/modules/watcher"
-	"github.com/irving-frias/drupal-watcher/internal/app/common"
+	modules "github.com/irving-frias/drupal-watcher/internal/app/modules"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/health"
 	"github.com/irving-frias/drupal-watcher/internal/validate"
@@ -33,7 +30,7 @@ func main() {
 			return
 		}
 		if arg == "--version" || arg == "-V" || arg == "version" {
-			fmt.Printf("drupal-watcher %s (go %s)\n", common.PkgVersion(), strings.TrimPrefix(runtime.Version(), "go"))
+			fmt.Printf("drupal-watcher %s (go %s)\n", app.PkgVersion(), strings.TrimPrefix(runtime.Version(), "go"))
 			return
 		}
 		if arg == "--help" || arg == "-h" || arg == "help" {
@@ -51,9 +48,9 @@ func main() {
 	defer cancel()
 
 	i, err := app.Setup(
-		cfgmod.Register(root),
-		watchermod.Register,
-		execmod.Register,
+		modules.RegisterConfig(root),
+		modules.RegisterWatcher,
+		modules.RegisterExecutor,
 		orcmod.Register,
 		uimod.Register,
 	)

@@ -1,4 +1,4 @@
-package common
+package app
 
 // Typed wrappers to avoid string collision in the DI container.
 // samber/do resolves by concrete type, so WorkDir and DrupalRoot

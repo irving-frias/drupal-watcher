@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/irving-frias/drupal-watcher/internal/app/common"
+	"github.com/irving-frias/drupal-watcher/internal/app"
 	"github.com/irving-frias/drupal-watcher/internal/app/eventbus"
 	"github.com/irving-frias/drupal-watcher/internal/config"
 	"github.com/irving-frias/drupal-watcher/internal/metrics"
@@ -22,7 +22,7 @@ func Register(i do.Injector) error {
 	watcher := do.MustInvoke[core.Watcher](i)
 	exec := do.MustInvoke[core.CommandExecutor](i)
 	bus := do.MustInvoke[*eventbus.EventBus](i)
-	dr := do.MustInvoke[common.DrupalRoot](i)
+	dr := do.MustInvoke[app.DrupalRoot](i)
 
 	filters := []core.EventFilter{
 		adapters.NewPatternFilter(cfg.Patterns),

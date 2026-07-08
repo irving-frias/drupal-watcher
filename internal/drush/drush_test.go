@@ -1,11 +1,9 @@
-package drush_test
+package drush
 
 import (
 	"os/exec"
 	"strings"
 	"testing"
-
-	"github.com/irving-frias/drupal-watcher/internal/drush"
 )
 
 type mockDrushConfig struct {
@@ -23,62 +21,62 @@ func (m mockDrushConfig) GetDrupalRoot() *string   { return m.root }
 func (m mockDrushConfig) GetNotify() bool           { return m.notify }
 
 func TestGetCmd(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	cmd := "my-drush"
 	cfg := mockDrushConfig{cmd: &cmd}
-	result := drush.GetCmd(cfg)
+	result := GetCmd(cfg)
 	if result != "my-drush" {
 		t.Errorf("expected my-drush, got %s", result)
 	}
 }
 
 func TestGetCmdCache(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	// First call without explicit cmd — resolves drush and caches it
-	r1 := drush.GetCmd(mockDrushConfig{})
+	r1 := GetCmd(mockDrushConfig{})
 	if r1 == "" {
 		t.Fatal("expected a resolved path")
 	}
 
 	// Second call without cmd — should return cached value
-	r2 := drush.GetCmd(mockDrushConfig{})
+	r2 := GetCmd(mockDrushConfig{})
 	if r2 != r1 {
 		t.Errorf("expected cached (%s), got %s", r1, r2)
 	}
 }
 
 func TestGetCmdFallback(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	cfg := mockDrushConfig{}
-	result := drush.GetCmd(cfg)
+	result := GetCmd(cfg)
 	if result == "" {
 		t.Error("expected resolved drush command")
 	}
 }
 
 func TestResetCmdCache(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	// Prime the cache
 	cmd := "test-cmd"
 	cfg := mockDrushConfig{cmd: &cmd}
-	drush.GetCmd(cfg)
+	GetCmd(cfg)
 
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	// After reset, should resolve again
 	cfg2 := mockDrushConfig{}
-	result := drush.GetCmd(cfg2)
+	result := GetCmd(cfg2)
 	if result == "" {
 		t.Error("expected resolved drush command after reset")
 	}
 }
 
 func TestRunWithBasicCommand(t *testing.T) {
-	result := drush.Run("echo", []string{"hello"})
+	result := Run("echo", []string{"hello"})
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit 0, got %d: %s", result.ExitCode, result.Stderr)
 	}
@@ -93,7 +91,7 @@ func TestRunWithDrush(t *testing.T) {
 		t.Skip("drush not found in PATH")
 	}
 
-	result := drush.Run(drushPath, []string{"--version"})
+	result := Run(drushPath, []string{"--version"})
 	if result.ExitCode != 0 {
 		t.Fatalf("drush --version failed: exit %d, stderr=%s", result.ExitCode, result.Stderr)
 	}
@@ -104,41 +102,41 @@ func TestRunWithDrush(t *testing.T) {
 
 func TestHealthCheck(t *testing.T) {
 	cfg := mockDrushConfig{command: "cr"}
-	ok := drush.HealthCheck(cfg)
+	ok := HealthCheck(cfg)
 	t.Logf("HealthCheck returned %v", ok)
 }
 
 func TestRunFailsGracefully(t *testing.T) {
-	result := drush.Run("nonexistent-command-12345", []string{})
+	result := Run("nonexistent-command-12345", []string{})
 	if result.ExitCode == 0 {
 		t.Error("expected non-zero exit for nonexistent command")
 	}
 }
 
 func TestRunCacheClearsEmpty(t *testing.T) {
-	result := drush.RunCacheClears(nil, nil)
+	result := RunCacheClears(nil, nil)
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit 0, got %d", result.ExitCode)
 	}
 }
 
 func TestRunCacheClearsCR(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	cmd := "echo"
 	cfg := mockDrushConfig{cmd: &cmd}
-	result := drush.RunCacheClears(cfg, []string{"cr"})
+	result := RunCacheClears(cfg, []string{"cr"})
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit 0, got %d: %s", result.ExitCode, result.Stderr)
 	}
 }
 
 func TestRunCacheClearsBatchesCC(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	cmd := "echo"
 	cfg := mockDrushConfig{cmd: &cmd}
-	result := drush.RunCacheClears(cfg, []string{"cc render", "cc plugin", "cc css-js"})
+	result := RunCacheClears(cfg, []string{"cc render", "cc plugin", "cc css-js"})
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit 0, got %d: %s", result.ExitCode, result.Stderr)
 	}
@@ -149,18 +147,18 @@ func TestRunCacheClearsBatchesCC(t *testing.T) {
 }
 
 func TestNotifyCalledOnSuccess(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	var calledTitle, calledMsg string
-	drush.NotifyFunc = func(title, message string) {
+	NotifyFunc = func(title, message string) {
 		calledTitle = title
 		calledMsg = message
 	}
-	defer func() { drush.NotifyFunc = drush.NotifyOS }()
+	defer func() { NotifyFunc = NotifyOS }()
 
 	cmd := "echo"
 	cfg := mockDrushConfig{cmd: &cmd, notify: true}
-	result := drush.RunCacheClears(cfg, []string{"cr"})
+	result := RunCacheClears(cfg, []string{"cr"})
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d", result.ExitCode)
 	}
@@ -173,17 +171,17 @@ func TestNotifyCalledOnSuccess(t *testing.T) {
 }
 
 func TestNotifyNotCalledWhenDisabled(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	var called bool
-	drush.NotifyFunc = func(title, message string) {
+	NotifyFunc = func(title, message string) {
 		called = true
 	}
-	defer func() { drush.NotifyFunc = drush.NotifyOS }()
+	defer func() { NotifyFunc = NotifyOS }()
 
 	cmd := "echo"
 	cfg := mockDrushConfig{cmd: &cmd, notify: false}
-	result := drush.RunCacheClears(cfg, []string{"cr"})
+	result := RunCacheClears(cfg, []string{"cr"})
 	if result.ExitCode != 0 {
 		t.Fatalf("expected exit 0, got %d", result.ExitCode)
 	}
@@ -193,16 +191,16 @@ func TestNotifyNotCalledWhenDisabled(t *testing.T) {
 }
 
 func TestNotifyNotCalledOnError(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	var called bool
-	drush.NotifyFunc = func(title, message string) {
+	NotifyFunc = func(title, message string) {
 		called = true
 	}
-	defer func() { drush.NotifyFunc = drush.NotifyOS }()
+	defer func() { NotifyFunc = NotifyOS }()
 
 	cfg := mockDrushConfig{cmd: nil, notify: true}
-	result := drush.RunCacheClears(cfg, []string{"cr"})
+	result := RunCacheClears(cfg, []string{"cr"})
 	if result.ExitCode == 0 {
 		t.Skip("unexpected success, skipping error test")
 	}
@@ -212,11 +210,11 @@ func TestNotifyNotCalledOnError(t *testing.T) {
 }
 
 func TestRunCacheClearsCRoverridesCC(t *testing.T) {
-	drush.ResetCmdCache()
+	ResetCmdCache()
 
 	cmd := "echo"
 	cfg := mockDrushConfig{cmd: &cmd}
-	result := drush.RunCacheClears(cfg, []string{"cc render", "cr", "cc plugin"})
+	result := RunCacheClears(cfg, []string{"cc render", "cr", "cc plugin"})
 	if result.ExitCode != 0 {
 		t.Errorf("expected exit 0, got %d: %s", result.ExitCode, result.Stderr)
 	}

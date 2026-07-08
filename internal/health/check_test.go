@@ -1,4 +1,4 @@
-package health_test
+package health
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/irving-frias/drupal-watcher/internal/health"
 )
 
 func cacheDir() string {
@@ -18,12 +16,12 @@ func cacheDir() string {
 	return dir
 }
 
-func healthPath() string {
+func testHealthPath() string {
 	return filepath.Join(cacheDir(), "drupal-watcher", "health")
 }
 
 func cleanupHealthFile() {
-	os.Remove(healthPath())
+	os.Remove(testHealthPath())
 }
 
 func TestHealthFileWritten(t *testing.T) {
@@ -31,11 +29,11 @@ func TestHealthFileWritten(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go health.Run(ctx)
+	go Run(ctx)
 
 	time.Sleep(200 * time.Millisecond)
 
-	p := healthPath()
+	p := testHealthPath()
 	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("failed to read health file: %v", err)
@@ -55,11 +53,11 @@ func TestHealthFileCleanedOnCancel(t *testing.T) {
 	cleanupHealthFile()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go health.Run(ctx)
+	go Run(ctx)
 
 	time.Sleep(500 * time.Millisecond)
 
-	p := healthPath()
+	p := testHealthPath()
 	if _, err := os.Stat(p); os.IsNotExist(err) {
 		t.Skip("health file not created within 500ms (slow CI)")
 	}
@@ -77,10 +75,10 @@ func TestHealthFileUpdated(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go health.Run(ctx)
+	go Run(ctx)
 	time.Sleep(200 * time.Millisecond)
 
-	p := healthPath()
+	p := testHealthPath()
 	data1, _ := os.ReadFile(p)
 
 	time.Sleep(500 * time.Millisecond)
@@ -93,7 +91,7 @@ func TestHealthFileUpdated(t *testing.T) {
 }
 
 func TestHealthFilePath(t *testing.T) {
-	p := healthPath()
+	p := testHealthPath()
 	if p == "" {
 		t.Fatal("health path should not be empty")
 	}
